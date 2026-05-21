@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "dev": "npm --prefix Front_End run dev",
+    "build": "npm --prefix Front_End run build",
+    "preview": "npm --prefix Front_End run preview"
+  }
+}
