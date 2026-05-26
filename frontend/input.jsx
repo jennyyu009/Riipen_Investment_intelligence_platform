@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Upload, Link, Building2, User, Mail, Sparkles } from "lucide-react";
 
 export default function FounderIntakeForm() {
@@ -223,7 +223,7 @@ export default function FounderIntakeForm() {
 
               {submitError && (
                 <div className="rounded-2xl bg-rose-50 p-4 text-sm text-rose-800">
-                  请填写所有带 * 的必填项后再提交。
+                  Please complete all required fields before submitting.
                 </div>
               )}
 
@@ -357,6 +357,17 @@ function Select({ label, name, value, onChange, options, required = false }) {
 
 function MultiSelect({ label, name, value, onChange, options, required = false, placeholder = "" }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (open && ref.current && !ref.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
 
   const toggleOption = (option) => {
     const nextValue = value.includes(option)
@@ -366,7 +377,7 @@ function MultiSelect({ label, name, value, onChange, options, required = false, 
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <label className="mb-2 block text-sm font-medium text-slate-700">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
