@@ -65,7 +65,6 @@ export default function FounderIntakeForm() {
 
   const isFormValid =
     formData.name.trim() &&
-    formData.email.trim() &&
     formData.linkedinUrl.trim() &&
     formData.startupName.trim() &&
     formData.stage &&
@@ -77,7 +76,6 @@ export default function FounderIntakeForm() {
     e.preventDefault();
     const missing = [];
     if (!formData.name.trim()) missing.push("Name");
-    if (!formData.email.trim()) missing.push("Email");
     if (!formData.linkedinUrl.trim()) missing.push("LinkedIn URL");
     if (!formData.startupName.trim()) missing.push("Startup Name");
     if (!formData.stage) missing.push("Stage");
