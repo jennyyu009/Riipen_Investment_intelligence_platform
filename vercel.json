@@ -1,6 +1,6 @@
 {
-  "installCommand": "npm --prefix Front_End install",
+  "installCommand": "npm --prefix frontend install",
   "buildCommand": "npm run build",
-  "outputDirectory": "Front_End/dist",
+  "outputDirectory": "frontend/dist",
   "devCommand": "npm run dev"
 }

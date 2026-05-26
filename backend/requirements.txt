@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+pandas
+crawl4ai
+sentence-transformers
+torch
+numpy

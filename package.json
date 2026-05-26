@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "dev": "npm --prefix Front_End run dev",
-    "build": "npm --prefix Front_End run build",
-    "preview": "npm --prefix Front_End run preview"
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview"
   }
 }
