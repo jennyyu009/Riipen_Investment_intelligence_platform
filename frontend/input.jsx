@@ -229,8 +229,7 @@ export default function FounderIntakeForm() {
 
               <button
                 type="submit"
-                disabled={!isFormValid}
-                className={`w-full rounded-2xl px-6 py-4 text-base font-semibold text-white shadow-md transition ${isFormValid ? "bg-slate-900 hover:bg-slate-700" : "bg-slate-400 cursor-not-allowed"}`}
+                className="w-full rounded-2xl bg-slate-900 px-6 py-4 text-base font-semibold text-white shadow-md transition hover:bg-slate-700"
               >
                 Submit Founder Profile
               </button>
