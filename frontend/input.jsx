@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { Upload, Link, Building2, User, Mail, Sparkles } from "lucide-react";
 
 export default function FounderIntakeForm() {
+  const [page, setPage] = useState("landing");
   const [formData, setFormData] = useState({
     name: "",
     linkedinUrl: "",
-    linkedinConnectionData: null,
     currentRole: "",
     email: "",
     startupName: "",
@@ -44,140 +44,204 @@ export default function FounderIntakeForm() {
   const handleSubmit = (e) => {
     e.preventDefault();
     setSubmitted(true);
+    setPage("dashboard");
     console.log("Founder Intake Form Data:", formData);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900">
-      <div className="mx-auto max-w-4xl">
-        <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm">
-            <Sparkles size={16} />
-            Investor Matching Intake
+    <div className="min-h-screen bg-slate-100 text-slate-900">
+      {page === "landing" ? (
+        <div className="flex min-h-screen items-center justify-center px-4 py-10">
+          <div className="w-full max-w-3xl rounded-[32px] border border-slate-200 bg-white/90 p-10 shadow-xl backdrop-blur-sm">
+            <div className="mb-8">
+              <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Investor Matching</p>
+              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-900">
+                Discover better fundraising through relationship intelligence.
+              </h1>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
+                Start your journey with a simple founder intake, then explore matching, relationship insights, and investor discovery.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPage("form")}
+              className="mt-6 inline-flex rounded-3xl bg-slate-900 px-8 py-4 text-base font-semibold text-white transition hover:bg-slate-700"
+            >
+              Start
+            </button>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight md:text-5xl">
-            Find the right investors through relationship intelligence
-          </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-base text-slate-600 md:text-lg">
-            Share your founder profile, startup details, relationship data, and fundraising goals. The platform will use this information to support investor matching, warm introductions, and outreach recommendations.
-          </p>
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl bg-white p-6 shadow-xl md:p-8">
-          <section>
-            <div className="mb-5 flex items-center gap-3">
-              <div className="rounded-2xl bg-slate-100 p-3">
-                <User size={22} />
+      ) : page === "form" ? (
+        <div className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900">
+          <div className="mx-auto max-w-4xl">
+            <div className="mb-8 text-center">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm">
+                Investor Matching Intake
               </div>
-              <div>
-                <h2 className="text-xl font-semibold">Personal Information</h2>
-                <p className="text-sm text-slate-500">Founder profile and relationship data</p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Input label="Name" name="name" value={formData.name} onChange={handleChange} required />
-              <Input label="Current Role" name="currentRole" value={formData.currentRole} onChange={handleChange} />
-              <Input label="Email" name="email" type="email" value={formData.email} onChange={handleChange} icon={<Mail size={18} />} />
-              <Input label="LinkedIn URL" name="linkedinUrl" value={formData.linkedinUrl} onChange={handleChange} required icon={<Link size={18} />} placeholder="https://www.linkedin.com/in/..." />
-            </div>
-
-            <section className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-              <Upload className="mx-auto mb-3" size={30} />
-              <h2 className="text-lg font-semibold">
-                LinkedIn Connection Data <span className="text-red-500">*</span>
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Upload exported LinkedIn connections as CSV, XLSX, or TXT
+              <h1 className="text-3xl font-bold tracking-tight md:text-5xl">
+                Fill in your founder profile
+              </h1>
+              <p className="mx-auto mt-4 max-w-2xl text-base text-slate-600 md:text-lg">
+                Complete the form below and submit to enter your personalized dashboard.
               </p>
-              <input
-                type="file"
-                name="linkedinConnectionData"
-                accept=".csv,.xlsx,.xls,.txt"
-                onChange={handleChange}
-                required
-                className="mt-4 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-              />
-              {formData.linkedinConnectionData && (
-                <p className="mt-3 text-sm font-medium text-slate-700">
-                  Selected: {formData.linkedinConnectionData.name}
-                </p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl bg-white p-6 shadow-xl md:p-8">
+              <section>
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="rounded-2xl bg-slate-100 p-3">
+                    <User size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold">Personal Information</h2>
+                    <p className="text-sm text-slate-500">Founder profile and relationship data</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Input label="Name" name="name" value={formData.name} onChange={handleChange} required />
+                  <Input label="Current Role" name="currentRole" value={formData.currentRole} onChange={handleChange} />
+                  <Input label="Email" name="email" type="email" value={formData.email} onChange={handleChange} icon={<Mail size={18} />} />
+                  <Input label="LinkedIn URL" name="linkedinUrl" value={formData.linkedinUrl} onChange={handleChange} required icon={<Link size={18} />} placeholder="https://www.linkedin.com/in/..." />
+                </div>
+              </section>
+
+              <Divider />
+
+              <section>
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="rounded-2xl bg-slate-100 p-3">
+                    <Building2 size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold">Startup Information</h2>
+                    <p className="text-sm text-slate-500">Company stage, industry, and website</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Input label="Startup Name" name="startupName" value={formData.startupName} onChange={handleChange} required />
+                  <Input label="Website URL" name="websiteUrl" value={formData.websiteUrl} onChange={handleChange} placeholder="https://yourstartup.com" />
+
+                  <Select label="Stage" name="stage" value={formData.stage} onChange={handleChange} options={stages} required />
+                  <Select label="Industry" name="industry" value={formData.industry} onChange={handleChange} options={industries} required />
+                </div>
+              </section>
+
+              <Divider />
+
+              <section>
+                <h2 className="mb-4 text-xl font-semibold">Fundraising Preferences</h2>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  One sentence about your fundraising preferences <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  name="fundraisingPreference"
+                  value={formData.fundraisingPreference}
+                  onChange={handleChange}
+                  required
+                  rows={3}
+                  placeholder="Example: We are looking for seed-stage investors with experience in AI infrastructure and enterprise SaaS."
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                />
+              </section>
+
+              <section className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                <Upload className="mx-auto mb-3" size={30} />
+                <h2 className="text-lg font-semibold">Upload Your Pitch Deck</h2>
+                <p className="mt-1 text-sm text-slate-500">PDF, PPT, or PPTX recommended</p>
+                <input
+                  type="file"
+                  name="pitchDeck"
+                  accept=".pdf,.ppt,.pptx"
+                  onChange={handleChange}
+                  className="mt-4 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                />
+                {formData.pitchDeck && (
+                  <p className="mt-3 text-sm font-medium text-slate-700">
+                    Selected: {formData.pitchDeck.name}
+                  </p>
+                )}
+              </section>
+
+              <button
+                type="submit"
+                className="w-full rounded-2xl bg-slate-900 px-6 py-4 text-base font-semibold text-white shadow-md transition hover:bg-slate-700"
+              >
+                Submit Founder Profile
+              </button>
+
+              {submitted && (
+                <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">
+                  Profile submitted successfully. Redirecting to dashboard...
+                </div>
               )}
-            </section>
-          </section>
-
-          <Divider />
-
-          <section>
-            <div className="mb-5 flex items-center gap-3">
-              <div className="rounded-2xl bg-slate-100 p-3">
-                <Building2 size={22} />
-              </div>
+            </form>
+          </div>
+        </div>
+      ) : (
+        <div className="min-h-screen bg-slate-100 px-4 py-8 text-slate-900">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-8 flex flex-col gap-4 rounded-[32px] border border-slate-200 bg-white/90 p-6 shadow-xl sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-xl font-semibold">Startup Information</h2>
-                <p className="text-sm text-slate-500">Company stage, industry, and website</p>
+                <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Dashboard</p>
+                <h1 className="mt-2 text-3xl font-semibold text-slate-900">
+                  Good Evening{formData.name ? `, ${formData.name}` : ""}
+                </h1>
+              </div>
+              <div className="flex items-center gap-3 rounded-3xl bg-slate-50 px-4 py-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-200 text-slate-700">
+                  {formData.name ? formData.name.charAt(0).toUpperCase() : "U"}
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-slate-900">{formData.name || "User"}</p>
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <button className="hover:text-slate-900">Profile</button>
+                    <span>•</span>
+                    <button className="hover:text-slate-900">Log out</button>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <Input label="Startup Name" name="startupName" value={formData.startupName} onChange={handleChange} required />
-              <Input label="Website URL" name="websiteUrl" value={formData.websiteUrl} onChange={handleChange} placeholder="https://yourstartup.com" />
+            <div className="grid gap-6">
+              <div className="rounded-[32px] border border-slate-200 bg-slate-50 p-10 text-center shadow-sm">
+                <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Pitch deck status</p>
+                <h2 className="mt-4 text-3xl font-semibold text-slate-900">No pitch deck uploaded yet</h2>
+                <p className="mt-4 text-base leading-7 text-slate-600">
+                  Upload your deck to improve matching by <span className="font-semibold text-slate-900">28%</span>.
+                </p>
+              </div>
 
-              <Select label="Stage" name="stage" value={formData.stage} onChange={handleChange} options={stages} required />
-              <Select label="Industry" name="industry" value={formData.industry} onChange={handleChange} options={industries} required />
+              <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-6 text-center">
+                    <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Matching</p>
+                    <h3 className="mt-4 text-xl font-semibold text-slate-900">Pitch deck insights</h3>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">
+                      Coming after you submit your deck. Matching score and investor fit appear here.
+                    </p>
+                  </div>
+                  <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-6 text-center">
+                    <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Relationship</p>
+                    <h3 className="mt-4 text-xl font-semibold text-slate-900">Connection intelligence</h3>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">
+                      Connection data and warm introduction readiness will be updated from the backend.
+                    </p>
+                  </div>
+                  <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-6 text-center">
+                    <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Discover investors</p>
+                    <h3 className="mt-4 text-xl font-semibold text-slate-900">Investor exploration</h3>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">
+                      Recommendations for relevant investors based on your profile and fundraising goals.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
-          </section>
-
-          <Divider />
-
-          <section>
-            <h2 className="mb-4 text-xl font-semibold">Fundraising Preferences</h2>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              One sentence about your fundraising preferences <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              name="fundraisingPreference"
-              value={formData.fundraisingPreference}
-              onChange={handleChange}
-              required
-              rows={3}
-              placeholder="Example: We are looking for seed-stage investors with experience in AI infrastructure and enterprise SaaS."
-              className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-            />
-          </section>
-
-          <section className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-            <Upload className="mx-auto mb-3" size={30} />
-            <h2 className="text-lg font-semibold">Upload Your Pitch Deck</h2>
-            <p className="mt-1 text-sm text-slate-500">PDF, PPT, or PPTX recommended</p>
-            <input
-              type="file"
-              name="pitchDeck"
-              accept=".pdf,.ppt,.pptx"
-              onChange={handleChange}
-              className="mt-4 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
-            />
-            {formData.pitchDeck && (
-              <p className="mt-3 text-sm font-medium text-slate-700">
-                Selected: {formData.pitchDeck.name}
-              </p>
-            )}
-          </section>
-
-          <button
-            type="submit"
-            className="w-full rounded-2xl bg-slate-900 px-6 py-4 text-base font-semibold text-white shadow-md transition hover:bg-slate-700"
-          >
-            Submit Founder Profile
-          </button>
-
-          {submitted && (
-            <div className="rounded-2xl bg-green-50 p-4 text-sm text-green-800">
-              Profile submitted successfully. Check the browser console to view the form data.
-            </div>
-          )}
-        </form>
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
