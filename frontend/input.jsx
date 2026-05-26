@@ -19,6 +19,7 @@ export default function FounderIntakeForm() {
 
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState(false);
+  const [missingFields, setMissingFields] = useState([]);
 
   const stages = ["Pre-seed", "Seed", "Series A", "Growth (Series B/C)", "Scale (Series D+)"];
   const industryOptions = [
@@ -74,11 +75,24 @@ export default function FounderIntakeForm() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!isFormValid) {
+    const missing = [];
+    if (!formData.name.trim()) missing.push("Name");
+    if (!formData.email.trim()) missing.push("Email");
+    if (!formData.linkedinUrl.trim()) missing.push("LinkedIn URL");
+    if (!formData.startupName.trim()) missing.push("Startup Name");
+    if (!formData.stage) missing.push("Stage");
+    if (!formData.industry.length) missing.push("Industry");
+    if (!formData.businessModel.length) missing.push("Business Model");
+    if (!formData.fundraisingPreference.trim()) missing.push("Fundraising Preferences");
+
+    if (missing.length > 0) {
       setSubmitError(true);
+      setMissingFields(missing);
       return;
     }
+
     setSubmitError(false);
+    setMissingFields([]);
     setSubmitted(true);
     setPage("dashboard");
     console.log("Founder Intake Form Data:", formData);
@@ -223,7 +237,12 @@ export default function FounderIntakeForm() {
 
               {submitError && (
                 <div className="rounded-2xl bg-rose-50 p-4 text-sm text-rose-800">
-                  Please complete all required fields before submitting.
+                  <p>Please complete all required fields before submitting.</p>
+                  {missingFields.length > 0 && (
+                    <p className="mt-2 text-sm text-rose-900">
+                      Missing: {missingFields.join(", ")}
+                    </p>
+                  )}
                 </div>
               )}
 
