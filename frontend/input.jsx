@@ -11,26 +11,47 @@ export default function FounderIntakeForm() {
     startupName: "",
     websiteUrl: "",
     stage: "",
-    industry: "",
+    industry: [],
+    businessModel: [],
     fundraisingPreference: "",
     pitchDeck: null,
   });
 
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
-  const stages = ["Idea", "Pre-seed", "Seed", "Series A"];
-  const industries = [
-    "AI",
+  const stages = ["Pre-seed", "Seed", "Series A", "Growth (Series B/C)", "Scale (Series D+)"];
+  const industryOptions = [
+    "AI / Machine Learning",
     "Fintech",
     "HealthTech",
     "ClimateTech",
     "Enterprise SaaS",
-    "Developer Tools",
-    "Consumer",
+    "Consumer Internet",
     "Marketplace",
     "Cybersecurity",
-    "LegalTech",
-    "Others",
+    "EdTech",
+    "PropTech",
+    "Logistics / Transportation",
+    "Energy / CleanTech",
+    "Biotech",
+    "Web3 / Blockchain",
+    "E-commerce",
+    "Gaming",
+  ];
+  const businessModelOptions = [
+    "B2B",
+    "B2C",
+    "B2B2C",
+    "Marketplace",
+    "SaaS",
+    "Subscription",
+    "Hardware",
+    "Platform",
+    "On-demand",
+    "Data / AI",
+    "Direct-to-Consumer",
+    "Freemium",
   ];
 
   const handleChange = (e) => {
@@ -41,8 +62,23 @@ export default function FounderIntakeForm() {
     }));
   };
 
+  const isFormValid =
+    formData.name.trim() &&
+    formData.email.trim() &&
+    formData.linkedinUrl.trim() &&
+    formData.startupName.trim() &&
+    formData.stage &&
+    formData.industry.length > 0 &&
+    formData.businessModel.length > 0 &&
+    formData.fundraisingPreference.trim();
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!isFormValid) {
+      setSubmitError(true);
+      return;
+    }
+    setSubmitError(false);
     setSubmitted(true);
     setPage("dashboard");
     console.log("Founder Intake Form Data:", formData);
@@ -124,7 +160,28 @@ export default function FounderIntakeForm() {
                   <Input label="Website URL" name="websiteUrl" value={formData.websiteUrl} onChange={handleChange} placeholder="https://yourstartup.com" />
 
                   <Select label="Stage" name="stage" value={formData.stage} onChange={handleChange} options={stages} required />
-                  <Select label="Industry" name="industry" value={formData.industry} onChange={handleChange} options={industries} required />
+                  <MultiSelect
+                    label="Industry"
+                    name="industry"
+                    value={formData.industry}
+                    onChange={handleChange}
+                    options={industryOptions}
+                    required
+                    placeholder="Select one or more industries"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <MultiSelect
+                    label="Business Model"
+                    name="businessModel"
+                    value={formData.businessModel}
+                    onChange={handleChange}
+                    options={businessModelOptions}
+                    required
+                    placeholder="Select business models"
+                  />
+                  <div />
                 </div>
               </section>
 
@@ -164,9 +221,16 @@ export default function FounderIntakeForm() {
                 )}
               </section>
 
+              {submitError && (
+                <div className="rounded-2xl bg-rose-50 p-4 text-sm text-rose-800">
+                  请填写所有带 * 的必填项后再提交。
+                </div>
+              )}
+
               <button
                 type="submit"
-                className="w-full rounded-2xl bg-slate-900 px-6 py-4 text-base font-semibold text-white shadow-md transition hover:bg-slate-700"
+                disabled={!isFormValid}
+                className={`w-full rounded-2xl px-6 py-4 text-base font-semibold text-white shadow-md transition ${isFormValid ? "bg-slate-900 hover:bg-slate-700" : "bg-slate-400 cursor-not-allowed"}`}
               >
                 Submit Founder Profile
               </button>
@@ -288,6 +352,64 @@ function Select({ label, name, value, onChange, options, required = false }) {
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+function MultiSelect({ label, name, value, onChange, options, required = false, placeholder = "" }) {
+  const [open, setOpen] = useState(false);
+
+  const toggleOption = (option) => {
+    const nextValue = value.includes(option)
+      ? value.filter((item) => item !== option)
+      : [...value, option];
+    onChange({ target: { name, value: nextValue } });
+  };
+
+  return (
+    <div className="relative">
+      <label className="mb-2 block text-sm font-medium text-slate-700">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex h-14 w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 text-left text-sm text-slate-700 shadow-sm transition hover:border-slate-400"
+      >
+        <div className="flex flex-wrap gap-2">
+          {value.length > 0 ? (
+            value.map((item) => (
+              <span key={item} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                {item}
+              </span>
+            ))
+          ) : (
+            <span className="text-slate-400">{placeholder || `Select ${label}`}</span>
+          )}
+        </div>
+        <span className="text-slate-500">▾</span>
+      </button>
+
+      {open && (
+        <div className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+          {options.map((option) => {
+            const selected = value.includes(option);
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => toggleOption(option)}
+                className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+              >
+                <span>{option}</span>
+                <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-400"}`}>
+                  {selected ? "✓" : ""}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
