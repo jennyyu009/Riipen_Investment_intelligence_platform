@@ -1,3 +1,3 @@
-from .relationship_service import run_relationship_intelligence
+from .relationship_service import is_same_person, is_verified_firm_match, run_relationship_intelligence
 
-__all__ = ["run_relationship_intelligence"]
+__all__ = ["is_same_person", "is_verified_firm_match", "run_relationship_intelligence"]

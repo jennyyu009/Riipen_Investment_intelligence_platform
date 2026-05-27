@@ -10,12 +10,36 @@ from rapidfuzz import fuzz
 
 from .neo4j_client import get_driver
 from .graph_builder import build_graph_from_neo4j
-from .pathfinding import find_best_path
-from .scoring import compute_recency, compute_seniority, relationship_strength
+from .scoring import compute_frequency, compute_recency, compute_seniority, relationship_strength
 
 DIRECT_CONTACT_THRESHOLD = 88
-FIRM_MATCH_THRESHOLD = 75
+FIRM_MATCH_THRESHOLD = 90
 MAX_INTRO_HOPS = 2
+GENERIC_FIRM_WORDS = {
+    "capital",
+    "ventures",
+    "venture",
+    "management",
+    "partners",
+    "partner",
+    "group",
+    "fund",
+    "finance",
+    "financial",
+    "bank",
+    "limited",
+    "ltd",
+    "inc",
+    "corp",
+    "corporation",
+    "company",
+    "canada",
+    "holdings",
+    "equity",
+    "private",
+    "investment",
+    "investments",
+}
 
 
 def _normalize_name(value: Any) -> str:
@@ -84,12 +108,144 @@ def _connection_rows(connections_csv_path: Optional[str]) -> List[Dict[str, Any]
     return rows
 
 
+def _read_messages(path: Optional[str]) -> pd.DataFrame:
+    if not path:
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(path)
+    except (FileNotFoundError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        return pd.DataFrame()
+    df.columns = [str(col).strip() for col in df.columns]
+    return df
+
+
+def _message_stats_for_connection(messages_df: pd.DataFrame, connection: Dict[str, Any]) -> Dict[str, Any]:
+    if messages_df.empty:
+        return {"count": None, "last_contact": None}
+
+    normalized_name = connection.get("normalized_name")
+    linkedin_key = connection.get("linkedin_key")
+    if not normalized_name and not linkedin_key:
+        return {"count": 0, "last_contact": None}
+
+    date_col = None
+    lower_columns = {str(col).lower(): col for col in messages_df.columns}
+    for candidate in ("timestamp", "time", "date", "created_at", "sent_at"):
+        if candidate in lower_columns:
+            date_col = lower_columns[candidate]
+            break
+
+    matched_rows = []
+    for _, row in messages_df.iterrows():
+        row_text = " ".join(str(value or "") for value in row.values)
+        normalized_row = _normalize_name(row_text)
+        linkedin_row = _linkedin_key(row_text)
+        if normalized_name and normalized_name in normalized_row:
+            matched_rows.append(row)
+        elif linkedin_key and linkedin_key in linkedin_row:
+            matched_rows.append(row)
+
+    last_contact = None
+    if date_col and matched_rows:
+        dates = pd.to_datetime([row.get(date_col) for row in matched_rows], errors="coerce", utc=True)
+        dates = dates.dropna()
+        if not dates.empty:
+            last_contact = dates.max().to_pydatetime()
+
+    return {"count": len(matched_rows), "last_contact": last_contact}
+
+
 def _name_similarity(a: Any, b: Any) -> float:
     left = _normalize_name(a)
     right = _normalize_name(b)
     if not left or not right:
         return 0.0
     return float(fuzz.token_set_ratio(left, right))
+
+
+def _person_name(value: Any) -> str:
+    if isinstance(value, dict):
+        return str(value.get("name") or "").strip()
+    return str(value or "").strip()
+
+
+def _person_linkedin_key(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    return _linkedin_key(
+        value.get("linkedin")
+        or value.get("linkedin_url")
+        or value.get("url")
+        or value.get("linkedin_key")
+    )
+
+
+def _first_last_parts(name: Any) -> tuple[str, str]:
+    parts = _normalize_name(name).split()
+    if len(parts) < 2:
+        return "", ""
+    return parts[0], parts[-1]
+
+
+def is_same_person(connection_person: Any, investor_contact: Any) -> bool:
+    connection_key = _person_linkedin_key(connection_person)
+    contact_key = _person_linkedin_key(investor_contact)
+    if connection_key and contact_key and connection_key == contact_key:
+        return True
+
+    connection_name = _person_name(connection_person)
+    contact_name = _person_name(investor_contact)
+    normalized_connection = _normalize_name(connection_name)
+    normalized_contact = _normalize_name(contact_name)
+    connection_first, connection_last = _first_last_parts(connection_name)
+    contact_first, contact_last = _first_last_parts(contact_name)
+    has_full_names = bool(connection_first and connection_last and contact_first and contact_last)
+    if not normalized_connection or not normalized_contact or not has_full_names:
+        return False
+
+    if normalized_connection == normalized_contact:
+        return True
+
+    names_have_same_first_last = connection_first == contact_first and connection_last == contact_last
+    return names_have_same_first_last and _name_similarity(connection_name, contact_name) >= 95
+
+
+def _is_weak_identity_candidate(connection_person: Any, investor_contact: Any) -> bool:
+    connection_name = _person_name(connection_person)
+    contact_name = _person_name(investor_contact)
+    if not connection_name or not contact_name:
+        return False
+    return _name_similarity(connection_name, contact_name) >= DIRECT_CONTACT_THRESHOLD
+
+
+def _clean_firm_name(value: Any) -> str:
+    normalized = _normalize_name(value)
+    words = [word for word in normalized.split() if word not in GENERIC_FIRM_WORDS]
+    return " ".join(words)
+
+
+def is_verified_firm_match(company_name: Any, investor_name: Any) -> bool:
+    normalized_company = _normalize_name(company_name)
+    normalized_investor = _normalize_name(investor_name)
+    if not normalized_company or not normalized_investor:
+        return False
+
+    if normalized_company == normalized_investor:
+        return True
+
+    cleaned_company = _clean_firm_name(company_name)
+    cleaned_investor = _clean_firm_name(investor_name)
+    if not cleaned_company or not cleaned_investor:
+        return False
+
+    shorter_cleaned = min(cleaned_company, cleaned_investor, key=len)
+    if (
+        len(shorter_cleaned) >= 5
+        and (cleaned_company in cleaned_investor or cleaned_investor in cleaned_company)
+    ):
+        return True
+
+    return float(fuzz.token_set_ratio(cleaned_company, cleaned_investor)) >= FIRM_MATCH_THRESHOLD
 
 
 def _iter_investor_contacts(investor: Any) -> List[Dict[str, Any]]:
@@ -120,12 +276,22 @@ def _investor_name(investor: Any) -> str:
     return str(investor or "")
 
 
-def _edge_strength(connection: Optional[Dict[str, Any]] = None, title: Optional[str] = None) -> float:
-    connected_on = pd.to_datetime((connection or {}).get("connected_on"), errors="coerce")
-    last_contact = None if pd.isna(connected_on) else connected_on.to_pydatetime()
-    frequency_score = 0
+def _edge_strength(
+    connection: Optional[Dict[str, Any]] = None,
+    title: Optional[str] = None,
+    message_stats: Optional[Dict[str, Any]] = None,
+) -> float:
+    connected_on = pd.to_datetime((connection or {}).get("connected_on"), errors="coerce", utc=True)
+    connected_on_date = None if pd.isna(connected_on) else connected_on.to_pydatetime()
+    message_last_contact = (message_stats or {}).get("last_contact")
+    last_contact = max(
+        [date for date in (connected_on_date, message_last_contact) if date is not None],
+        default=None,
+    )
+    message_count = (message_stats or {}).get("count")
+    frequency_score = compute_frequency(message_count) if message_count is not None else 50
     recency_score = compute_recency(last_contact)
-    mutual_connections_score = 100 if connection else 0
+    mutual_connections_score = 50
     seniority_score = compute_seniority(None, title or (connection or {}).get("title"))
     return relationship_strength(
         frequency_score,
@@ -164,12 +330,21 @@ def _build_verified_graph(
     founder_data: Dict[str, Any],
     top_investors: List[Any],
     connections: List[Dict[str, Any]],
+    messages_df: Optional[pd.DataFrame] = None,
 ) -> tuple[nx.Graph, Dict[str, Any]]:
     founder_name = str(founder_data.get("name") or "Founder")
     founder_node = "founder:you"
     G = nx.Graph()
-    direct_contact_matches = 0
-    firm_company_matches = 0
+    verified_direct_contact_matches = 0
+    rejected_weak_identity_matches = 0
+    same_firm_matches = 0
+    verified_firm_relationship_matches = 0
+    rejected_firm_matches = 0
+    messages_df = messages_df if messages_df is not None else pd.DataFrame()
+    message_stats_by_connection = {
+        _person_node_id("person", connection["name"], connection["linkedin_key"]): _message_stats_for_connection(messages_df, connection)
+        for connection in connections
+    }
 
     G.add_node(founder_node, labels=["Founder"], name=founder_name)
 
@@ -188,7 +363,7 @@ def _build_verified_graph(
             founder_node,
             person_node,
             "CONNECTED",
-            _edge_strength(connection, connection["title"]),
+            _edge_strength(connection, connection["title"], message_stats_by_connection.get(person_node)),
             verified=True,
             connected_on=connection["connected_on"],
         )
@@ -235,15 +410,18 @@ def _build_verified_graph(
 
             for connection in connections:
                 connection_node = _person_node_id("person", connection["name"], connection["linkedin_key"])
-                url_match = bool(contact_key and contact_key == connection["linkedin_key"])
-                name_score = _name_similarity(contact_name_raw, connection["name"])
-                if not url_match and name_score < DIRECT_CONTACT_THRESHOLD:
+                if not is_same_person(connection, contact):
+                    if _is_weak_identity_candidate(connection, contact):
+                        rejected_weak_identity_matches += 1
                     continue
 
-                direct_contact_matches += 1
-                match_type = "LinkedIn URL match" if url_match else "name similarity match"
-                similarity = 100 if url_match else name_score
-                strength = _edge_strength(connection, contact.get("title") or connection["title"])
+                verified_direct_contact_matches += 1
+                similarity = 100 if contact_key and contact_key == connection["linkedin_key"] else _name_similarity(contact_name_raw, connection["name"])
+                strength = _edge_strength(
+                    connection,
+                    contact.get("title") or connection["title"],
+                    message_stats_by_connection.get(connection_node),
+                )
                 _add_edge(
                     G,
                     connection_node,
@@ -251,31 +429,25 @@ def _build_verified_graph(
                     "INTRO_PATH",
                     strength,
                     verified=True,
-                    match_type=match_type,
+                    match_type="verified direct contact match",
                     similarity=similarity,
                     contact_title=contact.get("title") or connection.get("title"),
                     connected_on=connection["connected_on"],
                 )
-                if connection_node != contact_node:
-                    _add_edge(
-                        G,
-                        connection_node,
-                        contact_node,
-                        "IDENTITY_RESOLVED",
-                        strength,
-                        verified=True,
-                        match_type=match_type,
-                        similarity=similarity,
-                    )
 
         for connection in connections:
             if not connection["company"]:
                 continue
-            company_score = _name_similarity(connection["company"], investor_name)
-            if company_score < FIRM_MATCH_THRESHOLD:
+            if not is_verified_firm_match(connection["company"], investor_name):
+                rejected_firm_matches += 1
                 continue
 
-            firm_company_matches += 1
+            same_firm = _normalize_name(connection["company"]) == _normalize_name(investor_name)
+            if same_firm:
+                same_firm_matches += 1
+            else:
+                verified_firm_relationship_matches += 1
+            company_score = _name_similarity(_clean_firm_name(connection["company"]), _clean_firm_name(investor_name))
             company_firm_node = _firm_node_id(connection["company"])
             _add_edge(
                 G,
@@ -284,7 +456,7 @@ def _build_verified_graph(
                 "REPRESENTS",
                 100,
                 verified=True,
-                match_type="firm/company similarity match",
+                match_type="same investor firm match" if same_firm else "verified firm relationship match",
                 similarity=company_score,
             )
 
@@ -294,8 +466,14 @@ def _build_verified_graph(
         "contacts_checked": sum(len(_iter_investor_contacts(investor)) for investor in top_investors),
         "investor_firms_checked": len([_investor_name(investor) for investor in top_investors if _investor_name(investor)]),
         "connection_companies_checked": len({connection["normalized_company"] for connection in connections if connection["normalized_company"]}),
-        "direct_contact_matches": direct_contact_matches,
-        "firm_company_matches": firm_company_matches,
+        "verified_direct_contact_matches": verified_direct_contact_matches,
+        "rejected_weak_identity_matches": rejected_weak_identity_matches,
+        "direct_contact_matches": verified_direct_contact_matches,
+        "same_firm_matches": same_firm_matches,
+        "verified_firm_relationship_matches": verified_firm_relationship_matches,
+        "verified_firm_matches": same_firm_matches + verified_firm_relationship_matches,
+        "rejected_firm_matches": rejected_firm_matches,
+        "firm_company_matches": same_firm_matches + verified_firm_relationship_matches,
         "total_graph_edges": G.number_of_edges(),
         "total_graph_nodes": G.number_of_nodes(),
     }
@@ -307,81 +485,124 @@ def _path_kind(G: nx.Graph, path: List[str]) -> str:
     if edge_types == ["CONNECTED", "INTRO_PATH"]:
         return "direct contact match"
     if edge_types == ["CONNECTED", "WORKS_AT", "REPRESENTS"]:
-        return "firm/company match"
-    if edge_types == ["CONNECTED", "IDENTITY_RESOLVED", "INTRO_PATH"]:
-        return "identity-resolved contact match"
+        edge = G.get_edge_data(path[-2], path[-1]) or {}
+        if edge.get("match_type") == "same investor firm match":
+            return "same investor firm match"
+        return "verified firm relationship match"
     return "verified graph path"
 
 
-def _find_verified_path(G: nx.Graph, founder_node: str, investor_node: str) -> Dict[str, Any]:
-    if founder_node not in G or investor_node not in G:
-        return {}
+def _is_allowed_path(G: nx.Graph, path: List[str]) -> bool:
+    edge_types = [G.get_edge_data(left, right, {}).get("rel_type") for left, right in zip(path[:-1], path[1:])]
+    return edge_types in (
+        ["CONNECTED", "INTRO_PATH"],
+        ["CONNECTED", "WORKS_AT", "REPRESENTS"],
+    )
 
-    best = None
-    best_score = -1
-    best_hops = float("inf")
-    best_cost = float("inf")
+
+def _path_evidence(G: nx.Graph, path: List[str], match_type: str) -> List[str]:
+    names = [G.nodes[node].get("name") or str(node) for node in path]
+    if match_type == "direct contact match":
+        return [f"{names[1]} is explicitly listed as an investor contact and passed strict identity verification."]
+    if match_type == "same investor firm match":
+        return [
+            f"{names[1]} lists {names[2]}.",
+            f"{names[2]} exactly matches the investor firm.",
+        ]
+    if match_type == "verified firm relationship match":
+        return [
+            f"{names[1]} lists {names[2]}.",
+            f"{names[2]} passed strict firm verification for {names[-1]}.",
+        ]
+    return ["Verified graph relationship path."]
+
+
+def _path_score(strengths: List[float]) -> float:
+    if not strengths:
+        return 0.0
+    weakest_edge_strength = min(strengths)
+    average_edge_strength = sum(strengths) / len(strengths)
+    return (0.7 * weakest_edge_strength) + (0.3 * average_edge_strength)
+
+
+def _find_verified_paths(G: nx.Graph, founder_node: str, investor_node: str, limit: int = 3) -> List[Dict[str, Any]]:
+    if founder_node not in G or investor_node not in G:
+        return []
+
+    verified_paths = []
+    seen_paths = set()
     max_edges = MAX_INTRO_HOPS + 1
 
     for path in nx.all_simple_paths(G, source=founder_node, target=investor_node, cutoff=max_edges):
         if len(path) < 3 or len(path) - 2 > MAX_INTRO_HOPS:
             continue
-
-        edge_types = [G.get_edge_data(left, right, {}).get("rel_type") for left, right in zip(path[:-1], path[1:])]
-        if edge_types not in (
-            ["CONNECTED", "INTRO_PATH"],
-            ["CONNECTED", "WORKS_AT", "REPRESENTS"],
-            ["CONNECTED", "IDENTITY_RESOLVED", "INTRO_PATH"],
-        ):
+        if not _is_allowed_path(G, path):
             continue
 
-        total_cost = 0.0
+        path_key = tuple(path)
+        if path_key in seen_paths:
+            continue
+        seen_paths.add(path_key)
+
         strengths = []
         for left, right in zip(path[:-1], path[1:]):
             edge = G.get_edge_data(left, right) or {}
-            total_cost += float(edge.get("cost", 100))
             strengths.append(float(edge.get("strength", 0)))
 
-        relationship_score = int(min(strengths) if strengths else 0)
+        score = _path_score(strengths)
         intro_hops = len(path) - 2
+        match_type = _path_kind(G, path)
+        verified_paths.append({
+            "path": path,
+            "hops": intro_hops,
+            "relationship_score": int(round(score)),
+            "path_score": score,
+            "weakest_edge_strength": min(strengths) if strengths else 0,
+            "average_edge_strength": sum(strengths) / len(strengths) if strengths else 0,
+            "match_type": match_type,
+            "confidence": "verified",
+            "evidence": _path_evidence(G, path, match_type),
+        })
 
-        if (
-            relationship_score > best_score
-            or (relationship_score == best_score and intro_hops < best_hops)
-            or (relationship_score == best_score and intro_hops == best_hops and total_cost < best_cost)
-        ):
-            best_score = relationship_score
-            best_hops = intro_hops
-            best_cost = total_cost
-            best = {
-                "path": path,
-                "hops": intro_hops,
-                "relationship_score": relationship_score,
-                "cost": total_cost,
-                "match_type": _path_kind(G, path),
-            }
+    verified_paths.sort(key=lambda item: (item["relationship_score"], item["path_score"], -item["hops"]), reverse=True)
+    return verified_paths[:limit]
 
-    return best or {}
+
+def _investor_matching_score(investor: Any) -> Any:
+    if not isinstance(investor, dict):
+        return None
+    for key in ("matching_score", "score", "score_raw", "final_score"):
+        if investor.get(key) is not None:
+            return investor.get(key)
+    return None
 
 
 def _graph_relationship_results(
     founder_data: Dict[str, Any],
     top_investors: List[Any],
     connections: List[Dict[str, Any]],
+    messages_df: Optional[pd.DataFrame] = None,
 ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    G, diagnostics = _build_verified_graph(founder_data, top_investors, connections)
+    G, diagnostics = _build_verified_graph(founder_data, top_investors, connections, messages_df)
     results = []
 
     for investor in top_investors:
         investor_name = _investor_name(investor)
-        investor_entry = {"investor_name": investor_name, "paths": []}
-        best = _find_verified_path(G, "founder:you", _investor_node_id(investor_name))
-        if best:
+        investor_entry = {
+            "investor_name": investor_name,
+            "matching_score": _investor_matching_score(investor),
+            "paths": [],
+        }
+        verified_paths = _find_verified_paths(G, "founder:you", _investor_node_id(investor_name), limit=3)
+        for verified_path in verified_paths:
             investor_entry["paths"].append({
-                "path": [G.nodes[node].get("name") or str(node) for node in best["path"]],
-                "hops": best["hops"],
-                "relationship_score": best["relationship_score"],
-                "match_type": best["match_type"],
+                "path": [G.nodes[node].get("name") or str(node) for node in verified_path["path"]],
+                "hops": verified_path["hops"],
+                "relationship_score": verified_path["relationship_score"],
+                "path_score": verified_path["path_score"],
+                "match_type": verified_path["match_type"],
+                "confidence": verified_path["confidence"],
+                "evidence": verified_path["evidence"],
             })
         results.append(investor_entry)
 
@@ -392,7 +613,11 @@ def _merge_neo4j_path(result: Dict[str, Any], investor_name: str, path: Dict[str
     for entry in result["results"]:
         if entry["investor_name"] == investor_name:
             entry["paths"].append(path)
-            entry["paths"].sort(key=lambda item: item.get("relationship_score", 0), reverse=True)
+            entry["paths"].sort(
+                key=lambda item: (item.get("relationship_score", 0), item.get("path_score", 0)),
+                reverse=True,
+            )
+            entry["paths"] = entry["paths"][:3]
             return
     result["results"].append({"investor_name": investor_name, "paths": [path]})
 
@@ -411,10 +636,12 @@ def run_relationship_intelligence(
     Returns a structure suitable for API responses.
     """
     csv_connections = _connection_rows(connections_csv_path)
+    messages_df = _read_messages(messages_csv_path)
     graph_results, diagnostics = _graph_relationship_results(
         founder_data,
         top_investors,
         csv_connections,
+        messages_df,
     )
     result = {
         "results": graph_results,
@@ -465,15 +692,16 @@ def run_relationship_intelligence(
             continue
 
         try:
-            best = find_best_path(G, founder_node, investor_node, max_hops=2)
-            if best:
-                # convert node ids to names
-                path_names = [G.nodes[p].get("name") or str(p) for p in best["path"]]
+            for verified_path in _find_verified_paths(G, founder_node, investor_node, limit=3):
+                path_names = [G.nodes[p].get("name") or str(p) for p in verified_path["path"]]
                 _merge_neo4j_path(result, investor_name, {
                     "path": path_names,
-                    "hops": best["hops"],
-                    "relationship_score": best["relationship_score"],
-                    "match_type": "Neo4j graph path",
+                    "hops": verified_path["hops"],
+                    "relationship_score": verified_path["relationship_score"],
+                    "path_score": verified_path["path_score"],
+                    "match_type": verified_path["match_type"],
+                    "confidence": verified_path["confidence"],
+                    "evidence": verified_path["evidence"],
                 })
         except Exception as exc:
             result["errors"].append(f"Pathfinding failed for {investor_name}: {exc}")

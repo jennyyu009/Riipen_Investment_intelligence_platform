@@ -97,6 +97,7 @@ try:
     for i, result in enumerate(top_results, start=1):
         raw = result["score_raw"]
         scaled = round(100 * raw / top_score) if top_score else 0
+        result["matching_score"] = scaled
 
         print(f"{i}. {result['investor_name']}")
         print(f"   Type: {result['investor_type']}")
@@ -119,74 +120,86 @@ try:
     if not relationship_csv_path:
         relationship_csv_path = relationship_csv_default
 
+    messages_csv_default = os.path.join(
+        os.path.dirname(__file__),
+        "relationship_intelligence",
+        "relationship_intelligence",
+        "messages.csv",
+    )
+    messages_csv_path = input(
+        f"Enter messages CSV path for Relationship Intelligence [default: {messages_csv_default}] (leave blank to use default if present): "
+    ).strip()
+    if not messages_csv_path:
+        messages_csv_path = messages_csv_default if os.path.exists(messages_csv_default) else None
+    elif not os.path.exists(messages_csv_path):
+        print(f"Messages CSV not found at: {messages_csv_path}. Continuing without messages.csv.\n")
+        messages_csv_path = None
+
     if os.path.exists(relationship_csv_path):
         founder_data = {
             "name": founder_name,
-            "linkedin": linkedin_url,
-            "title": current_role,
+            "linkedin_url": linkedin_url,
             "email": email,
-            "location": location,
         }
 
-        top_investor_profiles = [
-            {
-                "investor_name": r["investor_name"],
-                "contact_1_name": r["contact_1_name"],
-                "contact_1_title": r["contact_1_title"],
-                "contact_1_linkedin": r["contact_1_linkedin"],
-                "contact_2_name": r["contact_2_name"],
-                "contact_2_title": r["contact_2_title"],
-                "contact_2_linkedin": r["contact_2_linkedin"],
-            }
-            for r in top_results
-        ]
-
-        relationship_result = run_relationship_intelligence(
-            founder_data,
-            top_investor_profiles,
+        relationship_results = run_relationship_intelligence(
+            founder_data=founder_data,
+            top_investors=top_results,
             connections_csv_path=relationship_csv_path,
+            messages_csv_path=messages_csv_path,
         )
 
-        print("\n===== RELATIONSHIP INTELLIGENCE =====\n")
+        print("\n===== RELATIONSHIP INTELLIGENCE PATHS =====\n")
 
-        relationship_matches = [
-            entry for entry in relationship_result.get("results", [])
+        displayed_entries = [
+            entry for entry in relationship_results.get("results", [])
             if entry.get("paths")
         ]
 
-        if relationship_matches:
-            for entry in relationship_matches:
-                best_path = entry["paths"][0]
-                path_text = " -> ".join(best_path["path"])
-                print(f"{entry['investor_name']}")
-                print(f"   Path: {path_text}")
-                print(f"   Relationship Score: {best_path['relationship_score']}")
-                print(f"   Match Type: {best_path.get('match_type', 'relationship path')}")
-                if best_path.get("contact_title"):
-                    print(f"   Contact Title: {best_path['contact_title']}")
-                if best_path.get("connected_on"):
-                    print(f"   Connected On: {best_path['connected_on']}")
-                print("")
-        else:
-            print("No verified warm intro path found.\n")
-            diagnostics = relationship_result.get("diagnostics", {})
-            print(
-                "Checked "
-                f"{diagnostics.get('contacts_checked', 0)} investor contacts, "
-                f"{diagnostics.get('investor_firms_checked', 0)} investor firm names, "
-                f"{diagnostics.get('connection_companies_checked', 0)} LinkedIn connection companies, "
-                f"and {diagnostics.get('total_graph_edges', 0)} verified graph edges.\n"
-            )
-            print(
-                "Debug counts: "
-                f"direct contact matches={diagnostics.get('direct_contact_matches', 0)}, "
-                f"firm/company matches={diagnostics.get('firm_company_matches', 0)}, "
-                f"total graph edges={diagnostics.get('total_graph_edges', 0)}.\n"
-            )
+        if not displayed_entries:
+            print("No verified warm intro paths found for the current top 15 investors.\n")
 
-        if relationship_result.get("errors"):
+        for i, entry in enumerate(displayed_entries, start=1):
+            print(f"{i}. {entry['investor_name']}")
+            if entry.get("matching_score") is not None:
+                print(f"   Matching Score: {entry['matching_score']}")
+            else:
+                print("   Matching Score: N/A")
+
+            for path_index, path in enumerate(entry["paths"], start=1):
+                path_text = " -> ".join(path["path"])
+                print(f"\n   Path {path_index}: {path_text}")
+                print(f"   Hops: {path['hops']}")
+                print(f"   Relationship Score: {path['relationship_score']}")
+                print(f"   Match Type: {path.get('match_type', 'relationship path')}")
+                print(f"   Confidence: {path.get('confidence', 'verified')}")
+                if path.get("evidence"):
+                    print("   Evidence:")
+                    for evidence in path.get("evidence", []):
+                        print(f"   - {evidence}")
+            print("")
+
+        diagnostics = relationship_results.get("diagnostics", {})
+        print(
+            "Checked investors: "
+            f"{diagnostics.get('investors_checked', 0)}\n"
+            "Checked LinkedIn connections: "
+            f"{diagnostics.get('connections_loaded', 0)}\n"
+            "Verified direct contact matches: "
+            f"{diagnostics.get('verified_direct_contact_matches', 0)}\n"
+            "Rejected weak identity matches: "
+            f"{diagnostics.get('rejected_weak_identity_matches', 0)}\n"
+            "Verified firm relationship matches: "
+            f"{diagnostics.get('verified_firm_relationship_matches', 0)}\n"
+            "Rejected generic firm matches: "
+            f"{diagnostics.get('rejected_firm_matches', 0)}\n"
+            "Investors with paths displayed: "
+            f"{len(displayed_entries)}\n"
+        )
+
+        if relationship_results.get("errors"):
             print("Relationship Intelligence diagnostics:")
-            for error in relationship_result["errors"]:
+            for error in relationship_results["errors"]:
                 print(f"   - {error}")
             print("")
     else:
