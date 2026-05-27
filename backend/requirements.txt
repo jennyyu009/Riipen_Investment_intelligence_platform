@@ -7,3 +7,6 @@ crawl4ai
 sentence-transformers
 torch
 numpy
+neo4j
+networkx
+rapidfuzz
