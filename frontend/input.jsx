@@ -2,17 +2,50 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   Activity,
   ArrowRight,
+  BarChart3,
   Building2,
+  CheckCircle2,
   CircleDollarSign,
+  FileText,
+  Loader2,
+  LogOut,
   Link,
   Mail,
+  MessageCircle,
   Network,
+  Send,
   ShieldCheck,
   Sparkles,
+  TableProperties,
   TrendingUp,
   Upload,
   User,
+  X,
 } from "lucide-react";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
+const demoMatches = [
+  "Northstar Ventures",
+  "Blue Ridge Capital",
+  "Maple Seed Fund",
+  "Harbor Growth Partners",
+  "Signal Peak VC",
+  "Frontier Fintech Fund",
+  "Catalyst Angels",
+  "Summit Bridge Capital",
+  "Latitude Ventures",
+  "Meridian Capital",
+  "Foundry Collective",
+  "Arcadia Partners",
+  "Cedar Street Ventures",
+  "Brightline Capital",
+  "Pacific Anchor Fund",
+].map((entityName, index) => ({
+  investor_id: index + 1,
+  entity_name: entityName,
+  final_score: Math.max(72, 98 - index * 2),
+}));
 
 export default function FounderIntakeForm() {
   const [page, setPage] = useState("landing");
@@ -33,6 +66,19 @@ export default function FounderIntakeForm() {
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState(false);
   const [missingFields, setMissingFields] = useState([]);
+  const [matches, setMatches] = useState([]);
+  const [matchingLoading, setMatchingLoading] = useState(false);
+  const [matchingSource, setMatchingSource] = useState("demo");
+  const [deckBoost, setDeckBoost] = useState(0);
+  const [deckError, setDeckError] = useState("");
+  const [activePanel, setActivePanel] = useState(null);
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState([
+    {
+      role: "assistant",
+      text: "Upload client information or paste notes here. I will keep the context attached to this dashboard section.",
+    },
+  ]);
 
   const stages = ["Pre-seed", "Seed", "Series A", "Growth (Series B/C)", "Scale (Series D+)"];
   const industryOptions = [
@@ -76,12 +122,171 @@ export default function FounderIntakeForm() {
 
   const flowMetrics = ["ARR +31%", "CAC Payback 7.8m", "Seed Lead", "Fintech", "Warm Path", "Series A Ready"];
 
+  useEffect(() => {
+    if (page !== "dashboard") return undefined;
+
+    let cancelled = false;
+    const target = formData.pitchDeck ? 42 : 28;
+    setDeckBoost(0);
+
+    const interval = window.setInterval(() => {
+      setDeckBoost((current) => {
+        if (current >= target) {
+          window.clearInterval(interval);
+          return target;
+        }
+        return Math.min(target, current + 2);
+      });
+    }, 55);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [page, formData.pitchDeck]);
+
+  useEffect(() => {
+    if (page !== "dashboard") return undefined;
+
+    let cancelled = false;
+
+    const loadMatches = async () => {
+      setMatchingLoading(true);
+      setMatches([]);
+
+      const startedAt = Date.now();
+
+      try {
+        const submitResponse = await fetch(`${API_BASE}/submit-founder`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            founder: {
+              name: formData.name,
+              linkedin_url: formData.linkedinUrl,
+              current_role: formData.currentRole,
+              email: formData.email,
+            },
+            startup: {
+              startup_name: formData.startupName,
+              website_url: formData.websiteUrl,
+              stage: formData.stage,
+              industry: formData.industry.join(", "),
+              fundraising_preference: formData.fundraisingPreference,
+              pitch_deck_url: formData.pitchDeck ? formData.pitchDeck.name : "",
+            },
+          }),
+        });
+
+        if (!submitResponse.ok) throw new Error("Founder submit failed");
+        const submitData = await submitResponse.json();
+
+        const matchResponse = await fetch(`${API_BASE}/match-investors/${submitData.startup_id}`, {
+          method: "POST",
+        });
+
+        if (!matchResponse.ok) throw new Error("Matching failed");
+        const matchData = await matchResponse.json();
+        const topInvestors = (matchData.top_investors || []).slice(0, 15);
+
+        const normalizedMatches = topInvestors.length
+          ? topInvestors.map((investor, index) => ({
+              investor_id: investor.investor_id || index + 1,
+              entity_name: investor.entity_name || `Investor ${index + 1}`,
+              final_score: investor.final_score || investor.final_score_scaled || 0,
+            }))
+          : demoMatches;
+
+        const remainingDelay = Math.max(0, 1400 - (Date.now() - startedAt));
+        window.setTimeout(() => {
+          if (cancelled) return;
+          setMatches(normalizedMatches);
+          setMatchingSource(topInvestors.length ? "backend" : "demo");
+          setMatchingLoading(false);
+        }, remainingDelay);
+      } catch (error) {
+        const remainingDelay = Math.max(0, 1400 - (Date.now() - startedAt));
+        window.setTimeout(() => {
+          if (cancelled) return;
+          setMatches(demoMatches);
+          setMatchingSource("demo");
+          setMatchingLoading(false);
+        }, remainingDelay);
+      }
+    };
+
+    loadMatches();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [page]);
+
   const handleChange = (e) => {
     const { name, value, files } = e.target;
     setFormData((prev) => ({
       ...prev,
       [name]: files ? files[0] : value,
     }));
+  };
+
+  const handlePitchDeckChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      setDeckError("Pitch deck only accepts PDF files.");
+      e.target.value = "";
+      return;
+    }
+
+    setDeckError("");
+    setFormData((prev) => ({
+      ...prev,
+      pitchDeck: file,
+    }));
+  };
+
+  const openPanel = (panel) => {
+    setActivePanel(panel);
+    setChatMessages([
+      {
+        role: "assistant",
+        text: `This chat is attached to ${panel.title}. Upload client information or add notes for this section.`,
+      },
+    ]);
+  };
+
+  const handleChatSend = () => {
+    if (!chatInput.trim()) return;
+    setChatMessages((prev) => [
+      ...prev,
+      { role: "user", text: chatInput.trim() },
+      {
+        role: "assistant",
+        text: "Noted. This information is saved in the current dashboard context for review.",
+      },
+    ]);
+    setChatInput("");
+  };
+
+  const handleClientFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setChatMessages((prev) => [
+      ...prev,
+      { role: "user", text: `Uploaded client file: ${file.name}` },
+      { role: "assistant", text: "File received. Add any notes you want attached to this section." },
+    ]);
+    e.target.value = "";
+  };
+
+  const handleLogout = () => {
+    setPage("landing");
+    setActivePanel(null);
+    setSubmitError(false);
   };
 
   const isFormValid =
@@ -92,6 +297,33 @@ export default function FounderIntakeForm() {
     formData.industry.length > 0 &&
     formData.businessModel.length > 0 &&
     formData.fundraisingPreference.trim();
+
+  const dashboardPanels = [
+    {
+      id: "matching",
+      title: "Top 15 Matching Results",
+      subtitle: "Investor list ranked by matching score.",
+      icon: <BarChart3 size={20} />,
+    },
+    {
+      id: "pitch",
+      title: "Pitch Deck Upload",
+      subtitle: "Upload one PDF deck to enrich matching.",
+      icon: <FileText size={20} />,
+    },
+    {
+      id: "relationship",
+      title: "Relationship Intelligence",
+      subtitle: "Add customer context and warm intro notes.",
+      icon: <Network size={20} />,
+    },
+    {
+      id: "discovery",
+      title: "Investor Exploration",
+      subtitle: "Capture discovery feedback and investor notes.",
+      icon: <MessageCircle size={20} />,
+    },
+  ];
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -406,14 +638,15 @@ export default function FounderIntakeForm() {
               <section className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                 <Upload className="mx-auto mb-3" size={30} />
                 <h2 className="text-lg font-semibold">Upload Your Pitch Deck</h2>
-                <p className="mt-1 text-sm text-slate-500">PDF, PPT, or PPTX recommended</p>
+                <p className="mt-1 text-sm text-slate-500">PDF only</p>
                 <input
                   type="file"
                   name="pitchDeck"
-                  accept=".pdf,.ppt,.pptx"
-                  onChange={handleChange}
+                  accept="application/pdf,.pdf"
+                  onChange={handlePitchDeckChange}
                   className="mt-4 w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
                 />
+                {deckError && <p className="mt-3 text-sm font-medium text-rose-600">{deckError}</p>}
                 {formData.pitchDeck && (
                   <p className="mt-3 text-sm font-medium text-slate-700">
                     Selected: {formData.pitchDeck.name}
@@ -448,65 +681,231 @@ export default function FounderIntakeForm() {
           </div>
         </div>
       ) : (
-        <div className="min-h-screen bg-slate-100 px-4 py-8 text-slate-900">
-          <div className="mx-auto max-w-6xl">
-            <div className="mb-8 flex flex-col gap-4 rounded-[32px] border border-slate-200 bg-white/90 p-6 shadow-xl sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-h-screen bg-[#eef3f7] px-4 py-8 text-slate-900">
+          <style>{`
+            @keyframes scoreGlow {
+              0%, 100% { transform: scale(1); box-shadow: 0 20px 60px rgba(77, 120, 155, .18); }
+              50% { transform: scale(1.04); box-shadow: 0 24px 80px rgba(77, 120, 155, .34); }
+            }
+
+            @keyframes loadingSweep {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(100%); }
+            }
+
+            .deck-score-glow { animation: scoreGlow 1.8s ease-in-out infinite; }
+            .loading-sweep { animation: loadingSweep 1.4s ease-in-out infinite; }
+          `}</style>
+
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-6 flex flex-col gap-4 rounded-[28px] border border-white bg-white/90 p-5 shadow-xl shadow-slate-200/60 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Dashboard</p>
-                <h1 className="mt-2 text-3xl font-semibold text-slate-900">
+                <p className="text-sm uppercase tracking-[0.24em] text-[#4d789b]">Dashboard</p>
+                <h1 className="mt-2 text-3xl font-semibold text-slate-950">
                   Good Evening{formData.name ? `, ${formData.name}` : ""}
                 </h1>
               </div>
               <div className="flex items-center gap-3 rounded-3xl bg-slate-50 px-4 py-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-200 text-slate-700">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#4d789b] text-white">
                   {formData.name ? formData.name.charAt(0).toUpperCase() : "U"}
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-slate-900">{formData.name || "User"}</p>
                   <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <button className="hover:text-slate-900">Profile</button>
+                    <button type="button" onClick={() => openPanel({ id: "profile", title: "Profile", subtitle: "Submitted form table." })} className="hover:text-[#4d789b]">
+                      Profile
+                    </button>
                     <span>•</span>
-                    <button className="hover:text-slate-900">Log out</button>
+                    <button type="button" onClick={handleLogout} className="inline-flex items-center gap-1 hover:text-[#4d789b]">
+                      <LogOut size={14} />
+                      Log out
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="grid gap-6">
-              <div className="rounded-[32px] border border-slate-200 bg-slate-50 p-10 text-center shadow-sm">
-                <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Pitch deck status</p>
-                <h2 className="mt-4 text-3xl font-semibold text-slate-900">No pitch deck uploaded yet</h2>
-                <p className="mt-4 text-base leading-7 text-slate-600">
-                  Upload your deck to improve matching by <span className="font-semibold text-slate-900">28%</span>.
+            <div className="grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
+              <button
+                type="button"
+                onClick={() => openPanel(dashboardPanels[0])}
+                className="rounded-[28px] border border-white bg-white p-6 text-left shadow-xl shadow-slate-200/60 transition hover:-translate-y-0.5 hover:shadow-2xl"
+              >
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm uppercase tracking-[0.2em] text-[#4d789b]">Matching</p>
+                    <h2 className="mt-2 text-2xl font-semibold">Top 15 matching results</h2>
+                  </div>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-[#e8f1f7] px-4 py-2 text-sm font-semibold text-[#345f82]">
+                    {matchingLoading ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
+                    {matchingLoading ? "Loading matches" : matchingSource === "backend" ? "Live results" : "Demo results"}
+                  </span>
+                </div>
+
+                {matchingLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4, 5].map((item) => (
+                      <div key={item} className="relative overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <div className="loading-sweep absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/80 to-transparent" />
+                        <div className="h-4 w-2/3 rounded-full bg-slate-200" />
+                        <div className="mt-3 h-3 w-1/4 rounded-full bg-slate-200" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {matches.map((match, index) => (
+                      <div key={`${match.entity_name}-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-semibold text-slate-400">#{index + 1}</span>
+                          <span className="rounded-full bg-[#4d789b] px-3 py-1 text-sm font-bold text-white">
+                            {Math.round(match.final_score)}%
+                          </span>
+                        </div>
+                        <p className="mt-3 truncate text-sm font-semibold text-slate-800">{match.entity_name}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </button>
+
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => openPanel(dashboardPanels[1])}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") openPanel(dashboardPanels[1]);
+                }}
+                className="rounded-[28px] border border-white bg-gradient-to-br from-[#4d789b] to-[#315b7d] p-6 text-left text-white shadow-xl shadow-[#4d789b]/20 transition hover:-translate-y-0.5 hover:shadow-2xl"
+              >
+                <p className="text-sm uppercase tracking-[0.2em] text-blue-50/80">Pitch deck status</p>
+                <div className="mt-5 flex items-end gap-3">
+                  <span className="deck-score-glow rounded-[24px] bg-white px-6 py-4 text-6xl font-black text-[#315b7d]">
+                    {deckBoost}%
+                  </span>
+                  <span className="pb-3 text-sm font-medium text-blue-50/90">
+                    matching lift
+                  </span>
+                </div>
+                <h2 className="mt-6 text-2xl font-semibold">
+                  {formData.pitchDeck ? "Pitch deck uploaded" : "Upload your pitch deck"}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-blue-50/80">
+                  {formData.pitchDeck ? formData.pitchDeck.name : "PDF only. The deck signal is highlighted because it improves investor ranking quality."}
                 </p>
-              </div>
-
-              <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-6 text-center">
-                    <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Matching</p>
-                    <h3 className="mt-4 text-xl font-semibold text-slate-900">Pitch deck insights</h3>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      Coming after you submit your deck. Matching score and investor fit appear here.
-                    </p>
-                  </div>
-                  <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-6 text-center">
-                    <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Relationship</p>
-                    <h3 className="mt-4 text-xl font-semibold text-slate-900">Connection intelligence</h3>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      Connection data and warm introduction readiness will be updated from the backend.
-                    </p>
-                  </div>
-                  <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-6 text-center">
-                    <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Discover investors</p>
-                    <h3 className="mt-4 text-xl font-semibold text-slate-900">Investor exploration</h3>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      Recommendations for relevant investors based on your profile and fundraising goals.
-                    </p>
-                  </div>
-                </div>
+                <label onClick={(e) => e.stopPropagation()} className="mt-5 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/15 px-4 py-3 text-sm font-semibold backdrop-blur transition hover:bg-white/25">
+                  <Upload size={18} />
+                  Upload PDF
+                  <input type="file" accept="application/pdf,.pdf" onChange={handlePitchDeckChange} className="hidden" />
+                </label>
+                {deckError && <p className="mt-3 text-sm font-semibold text-rose-100">{deckError}</p>}
               </div>
             </div>
+
+            <div className="mt-5 grid gap-5 md:grid-cols-3">
+              {[...dashboardPanels.slice(2), {
+                id: "profile",
+                title: "Profile Table",
+                subtitle: "Review the submitted founder and startup fields.",
+                icon: <TableProperties size={20} />,
+              }].map((panel) => (
+                <button
+                  key={panel.id}
+                  type="button"
+                  onClick={() => openPanel(panel)}
+                  className="rounded-[24px] border border-white bg-white p-5 text-left shadow-lg shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-[#b8cfe1]"
+                >
+                  <div className="mb-5 inline-flex rounded-2xl bg-[#e8f1f7] p-3 text-[#4d789b]">
+                    {panel.icon}
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-950">{panel.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">{panel.subtitle}</p>
+                  <p className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#4d789b]">
+                    Open workspace <ArrowRight size={16} />
+                  </p>
+                </button>
+              ))}
+            </div>
+
+            {activePanel && (
+              <div className="fixed inset-0 z-50 bg-slate-950/35 p-4 backdrop-blur-sm">
+                <div className="ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 p-5">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.18em] text-[#4d789b]">{activePanel.id}</p>
+                      <h2 className="mt-1 text-2xl font-semibold text-slate-950">{activePanel.title}</h2>
+                    </div>
+                    <button type="button" onClick={() => setActivePanel(null)} className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200">
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  {activePanel.id === "profile" ? (
+                    <div className="overflow-auto p-5">
+                      <div className="mb-4 flex items-center gap-2 text-[#4d789b]">
+                        <TableProperties size={20} />
+                        <span className="font-semibold">Submitted form table</span>
+                      </div>
+                      <table className="w-full overflow-hidden rounded-2xl text-left text-sm">
+                        <tbody className="divide-y divide-slate-100">
+                          {[
+                            ["Name", formData.name],
+                            ["Current Role", formData.currentRole || "-"],
+                            ["Email", formData.email || "-"],
+                            ["LinkedIn URL", formData.linkedinUrl],
+                            ["Startup Name", formData.startupName],
+                            ["Website URL", formData.websiteUrl || "-"],
+                            ["Stage", formData.stage],
+                            ["Industry", formData.industry.join(", ")],
+                            ["Business Model", formData.businessModel.join(", ")],
+                            ["Fundraising Preferences", formData.fundraisingPreference],
+                            ["Pitch Deck", formData.pitchDeck?.name || "Not uploaded"],
+                          ].map(([label, value]) => (
+                            <tr key={label}>
+                              <th className="w-44 bg-slate-50 px-4 py-3 font-semibold text-slate-600">{label}</th>
+                              <td className="px-4 py-3 text-slate-900">{value}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex-1 space-y-4 overflow-auto bg-slate-50 p-5">
+                        {chatMessages.map((message, index) => (
+                          <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                            <div className={`max-w-[82%] rounded-3xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "bg-[#4d789b] text-white" : "bg-white text-slate-700 shadow-sm"}`}>
+                              {message.text}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="border-t border-slate-100 p-4">
+                        <label className="mb-3 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 hover:border-[#4d789b] hover:text-[#4d789b]">
+                          <Upload size={17} />
+                          Upload client information
+                          <input type="file" accept=".pdf,.txt,.csv,.doc,.docx" onChange={handleClientFile} className="hidden" />
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleChatSend();
+                            }}
+                            placeholder="Message this section..."
+                            className="min-h-12 flex-1 rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-[#4d789b] focus:ring-2 focus:ring-[#dbeaf4]"
+                          />
+                          <button type="button" onClick={handleChatSend} className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#4d789b] text-white hover:bg-[#345f82]">
+                            <Send size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
