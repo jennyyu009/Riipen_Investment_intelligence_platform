@@ -5,7 +5,7 @@ sqlalchemy==2.0.35
 psycopg2-binary==2.9.9
 pydantic==2.9.2
 pandas==2.2.3
-crawl4ai==0.3.74
+crawl4ai
 sentence-transformers==3.1.1
 scikit-learn==1.5.2
 faiss-cpu==1.8.0.post1
