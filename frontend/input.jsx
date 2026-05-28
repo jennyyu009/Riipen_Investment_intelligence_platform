@@ -64,7 +64,7 @@ const recommendedInvestors = [
       "Canadian portfolio concentration creates relevant market-pattern overlap.",
       "Seed-stage appetite matches the current fundraising window.",
     ],
-    introPath: "Zhixin Yu -> AMG Venture Groups -> Deloitte Fintech Partner",
+    relationshipPaths: [],
   },
   {
     name: "OMERS Ventures",
@@ -76,7 +76,7 @@ const recommendedInvestors = [
       "Network overlap through Toronto operators improves intro likelihood.",
       "Fund size and ownership targets fit a pre-seed to seed raise.",
     ],
-    introPath: "Zhixin Yu -> Toronto Fintech Founder -> OMERS Ventures Principal",
+    relationshipPaths: [],
   },
   {
     name: "Portage Ventures",
@@ -88,15 +88,14 @@ const recommendedInvestors = [
       "Portfolio adjacency suggests practical go-to-market expertise.",
       "Warm path available through Canadian venture ecosystem contacts.",
     ],
-    introPath: "Zhixin Yu -> AMG Advisor Network -> Portage Ventures Partner",
+    relationshipPaths: [],
   },
 ];
 
-const recentActivities = [
-  "Deloitte Ventures ranking moved to #1 after fintech signal refresh.",
-  "New warm intro path identified through Toronto operator network.",
-  "Pitch deck parser detected missing traction slide.",
-  "OMERS Ventures added to outreach shortlist.",
+const relationshipReadiness = [
+  { label: "LinkedIn connections", value: "Not linked", state: "Action needed" },
+  { label: "Verified warm paths", value: "Pending", state: "Generate after sync" },
+  { label: "Investor graph", value: "Ready", state: "15 targets loaded" },
 ];
 
 const sectorBars = [
@@ -873,7 +872,7 @@ export default function FounderIntakeForm() {
                   deckError={deckError}
                   onPitchDeckChange={handlePitchDeckChange}
                 />
-                <RecentActivity items={recentActivities} />
+                <RelationshipReadiness items={relationshipReadiness} />
               </aside>
             </div>
           </main>
@@ -906,7 +905,6 @@ function Sidebar({ userName, onLogout, onProfileClick, onMatchesClick, onPanelCl
     { label: "Investors", icon: <Building2 size={18} />, action: () => onPanelClick({ id: "investors", title: "Investors", subtitle: "Investor workspace." }) },
     { label: "Network", icon: <Network size={18} />, action: () => onPanelClick(panels[2]) },
     { label: "Outreach", icon: <Send size={18} />, action: () => onPanelClick({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." }) },
-    { label: "Reports", icon: <FileText size={18} />, action: () => onPanelClick({ id: "reports", title: "Reports", subtitle: "Fundraising reports workspace." }) },
     { label: "Settings", icon: <Settings size={18} />, action: () => onPanelClick({ id: "settings", title: "Settings", subtitle: "Account and dashboard preferences." }) },
   ];
 
@@ -992,7 +990,15 @@ function KPICard({ label, value, detail, icon }) {
   );
 }
 
+function getPrimaryWarmIntroPath(investor) {
+  const firstPath = investor?.relationshipPaths?.[0];
+  if (!firstPath?.path?.length) return "";
+  return firstPath.path.join(" -> ");
+}
+
 function InvestorCard({ investor, rank, onViewDetails }) {
+  const primaryPath = getPrimaryWarmIntroPath(investor);
+
   return (
     <article className="flex min-h-full flex-col rounded-lg border border-slate-200 bg-slate-50/60 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -1036,7 +1042,13 @@ function InvestorCard({ investor, rank, onViewDetails }) {
 
       <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
         <p className="text-xs font-semibold uppercase text-slate-500">Warm Intro Path</p>
-        <p className="mt-2 text-sm leading-5 text-slate-700">{investor.introPath}</p>
+        {primaryPath ? (
+          <p className="mt-2 text-sm leading-5 text-slate-700">{primaryPath}</p>
+        ) : (
+          <p className="mt-2 rounded-md bg-slate-50 px-3 py-2 text-sm leading-5 text-slate-500">
+            Link with your connections to generate warm intro path.
+          </p>
+        )}
       </div>
 
       <button
@@ -1086,23 +1098,30 @@ function PitchDeckStatus({ deckBoost, pitchDeck, deckError, onPitchDeckChange })
   );
 }
 
-function RecentActivity({ items }) {
+function RelationshipReadiness({ items }) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-950">Recent Activity</h2>
-        <Activity size={18} className="text-blue-700" />
+        <h2 className="text-base font-semibold text-slate-950">Relationship Readiness</h2>
+        <Network size={18} className="text-blue-700" />
       </div>
-      <div className="space-y-4">
-        {items.map((item, index) => (
-          <div key={item} className="flex gap-3">
-            <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-700">
-              {index + 1}
+      <div className="space-y-3">
+        {items.map((item) => (
+          <div key={item.label} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-700">{item.label}</p>
+              <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                {item.value}
+              </span>
             </div>
-            <p className="text-sm leading-5 text-slate-600">{item}</p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">{item.state}</p>
           </div>
         ))}
       </div>
+      <button type="button" className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
+        <Link size={16} />
+        Link connections
+      </button>
     </section>
   );
 }
@@ -1296,6 +1315,7 @@ function MatchesPanel({ matches, matchingLoading, matchingSource }) {
 
 function InvestorDetailPanel({ investor }) {
   if (!investor) return null;
+  const verifiedPaths = investor.relationshipPaths || [];
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50 p-5">
@@ -1338,7 +1358,49 @@ function InvestorDetailPanel({ investor }) {
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm font-semibold text-slate-950">Warm Intro Path</p>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{investor.introPath}</p>
+            {verifiedPaths.length > 0 ? (
+              <div className="mt-3 space-y-3">
+                {verifiedPaths.map((path, index) => (
+                  <div key={`${path.path?.join("-")}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <p className="text-sm font-semibold text-slate-950">
+                      Path {index + 1}: {path.path.join(" -> ")}
+                    </p>
+                    <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                      <p>Hops: {path.hops}</p>
+                      <p>Relationship Score: {path.relationship_score}</p>
+                      <p>Match Type: {path.match_type || "relationship path"}</p>
+                      <p>Confidence: {path.confidence || "verified"}</p>
+                    </div>
+                    {path.evidence?.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        {path.evidence.map((evidence) => (
+                          <p key={evidence} className="text-xs leading-5 text-slate-500">
+                            Evidence: {evidence}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 overflow-hidden rounded-lg border border-dashed border-slate-300 bg-white p-4">
+                <div className="pointer-events-none select-none blur-[2px]">
+                  <p className="text-sm font-semibold text-slate-400">
+                    Path 1: You &gt; verified connection &gt; investor partner
+                  </p>
+                  <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+                    <p>Hops: pending</p>
+                    <p>Relationship Score: pending</p>
+                    <p>Match Type: verified graph path</p>
+                    <p>Confidence: pending</p>
+                  </div>
+                </div>
+                <p className="mt-4 rounded-md bg-blue-50 px-3 py-2 text-sm font-medium leading-6 text-blue-700">
+                  Link with your connections to generate warm intro path.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
