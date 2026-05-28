@@ -599,12 +599,25 @@ export default function FounderIntakeForm() {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error("Relationship intelligence failed");
+      if (!response.ok) {
+        let detail = "Relationship intelligence failed";
+        try {
+          const errorData = await response.json();
+          detail = errorData.detail || detail;
+        } catch (error) {
+          detail = await response.text();
+        }
+        throw new Error(detail);
+      }
       const data = await response.json();
       setRelationshipInsights(normalizeRelationshipIntelligence({ relationship_results: data }, displayedMatches));
     } catch (error) {
       setRelationshipInsights([]);
-      setRelationshipError("Unable to generate relationship intelligence from the uploaded connection data.");
+      setRelationshipError(
+        error?.message
+          ? `Unable to generate relationship intelligence: ${error.message}`
+          : "Unable to generate relationship intelligence from the uploaded connection data.",
+      );
     } finally {
       setRelationshipLoading(false);
       e.target.value = "";
