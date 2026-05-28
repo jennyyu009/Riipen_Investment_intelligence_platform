@@ -1,50 +1,51 @@
 import os
 import re
-import tempfile
-from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 try:
     from .database import Base, engine, get_db
     from .models import Founder, Startup, Investor, InvestorMatch
     from .schemas import FounderStartupCreate
-    from .matching import calculate_investor_score
-    from .relationship_intelligence.relationship_intelligence import run_relationship_intelligence
+    from .matching_score.api import router as matching_score_router
+    from .relationship_intelligence.api import router as relationship_intelligence_router
 except ImportError:
     from database import Base, engine, get_db
     from models import Founder, Startup, Investor, InvestorMatch
     from schemas import FounderStartupCreate
-    from matching import calculate_investor_score
-    from relationship_intelligence.relationship_intelligence import run_relationship_intelligence
+    from matching_score.api import router as matching_score_router
+    from relationship_intelligence.api import router as relationship_intelligence_router
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Latte Backend")
-ALLOWED_BROWSER_ORIGIN = re.compile(r"^https://.*\.vercel\.app$|^http://localhost:\d+$|^http://127\.0\.0\.1:\d+$")
-
-
-class RelationshipIntelligenceRequest(BaseModel):
-    founder_data: Dict[str, Any]
-    top_investors: List[Dict[str, Any]]
-    connections_csv: str
-    messages_csv: Optional[str] = None
-
-
+DEFAULT_FRONTEND_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+FRONTEND_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGINS", ",".join(DEFAULT_FRONTEND_ORIGINS)).split(",")
+    if origin.strip()
+]
+CORS_ORIGIN_REGEX = os.getenv(
+    "CORS_ORIGIN_REGEX",
+    r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
+)
+ALLOWED_BROWSER_ORIGIN = re.compile(rf"^(?:{CORS_ORIGIN_REGEX})$")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
+    allow_origins=FRONTEND_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(matching_score_router)
+app.include_router(relationship_intelligence_router)
 
 
 @app.middleware("http")
@@ -105,115 +106,6 @@ def submit_founder(data: FounderStartupCreate, db: Session = Depends(get_db)):
 @app.get("/investors")
 def get_investors(db: Session = Depends(get_db)):
     return db.query(Investor).all()
-
-
-@app.post("/match-investors/{startup_id}")
-def match_investors(startup_id: int, db: Session = Depends(get_db)):
-    startup = db.query(Startup).filter(Startup.id == startup_id).first()
-
-    if not startup:
-        return {"error": "Startup not found"}
-
-    investors = db.query(Investor).all()
-    results = []
-    founder = db.query(Founder).filter(Founder.id == startup.founder_id).first()
-
-    for investor in investors:
-        score_result = calculate_investor_score(startup, investor, founder=founder)
-        final_score = score_result["final_score"]
-
-        reason = (
-            f"Matched with {investor.entity_name} based on "
-            f"industry relevance, geographic fit and thesis alignment."
-        )
-
-        match = InvestorMatch(
-            founder_id=startup.founder_id,
-            startup_id=startup.id,
-            investor_id=investor.id,
-            final_score=final_score,
-            industry_score=score_result["industry_score"],
-            stage_score=score_result.get("stage_score", 0),
-            location_score=score_result["location_score"],
-            description_score=score_result["description_score"],
-            team_score=0,
-            match_reason=reason
-        )
-
-        db.add(match)
-
-        results.append({
-            "investor_id": investor.id,
-            "entity_name": investor.entity_name,
-            "investor_type": investor.investor_type,
-            "hq_country": investor.hq_country,
-            "location_city": investor.location_city,
-            "website": investor.website,
-            "company_linkedin": investor.company_linkedin,
-            "contact_1_name": investor.contact_1_name,
-            "contact_1_designation": investor.contact_1_designation,
-            "contact_1_linkedin": investor.contact_1_linkedin,
-            "contact_2_name": investor.contact_2_name,
-            "contact_2_designation": investor.contact_2_designation,
-            "contact_2_linkedin": investor.contact_2_linkedin,
-            "final_score_raw": final_score,
-            "industry_score": score_result["industry_score"],
-            "stage_score": score_result.get("stage_score", 0),
-            "location_score": score_result["location_score"],
-            "description_score": score_result["description_score"],
-            "match_reason": reason
-        })
-
-    db.commit()
-
-    results = sorted(results, key=lambda x: x["final_score_raw"], reverse=True)
-
-    top = results[:15]
-    top_score = top[0]["final_score_raw"] if top else 0
-    for r in top:
-        raw = r["final_score_raw"]
-        r["final_score_scaled"] = round(100 * raw / top_score) if top_score else 0
-        r["final_score"] = r["final_score_scaled"]
-
-    return {
-        "startup_id": startup.id,
-        "startup_name": startup.startup_name,
-        "industry": startup.industry,
-        "top_investors": top
-    }
-
-
-def _save_text_to_temp(content: str, suffix: str) -> str:
-    fd, path = tempfile.mkstemp(suffix=suffix)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(content)
-    except Exception:
-        os.close(fd)
-        raise
-    return path
-
-
-@app.post("/relationship-intelligence")
-def relationship_intelligence(payload: RelationshipIntelligenceRequest):
-    connection_path = None
-    messages_path = None
-
-    try:
-        connection_path = _save_text_to_temp(payload.connections_csv, ".csv")
-        if payload.messages_csv:
-            messages_path = _save_text_to_temp(payload.messages_csv, ".csv")
-
-        return run_relationship_intelligence(
-            founder_data=payload.founder_data,
-            top_investors=payload.top_investors,
-            connections_csv_path=connection_path,
-            messages_csv_path=messages_path,
-        )
-    finally:
-        for path in (connection_path, messages_path):
-            if path and os.path.exists(path):
-                os.remove(path)
 
 
 @app.get("/matches/{startup_id}")

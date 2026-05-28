@@ -28,43 +28,10 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
+import { apiFetch } from "./src/lib/api";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const PAGE_STORAGE_KEY = "founderInvestorMatchPage";
 const VALID_PAGES = new Set(["landing", "form", "dashboard"]);
-
-const getApiBaseCandidates = () => {
-  const configured = import.meta.env.VITE_API_URL;
-  if (configured) return [configured.replace(/\/$/, "")];
-
-  const localBases = ["http://127.0.0.1:8000", "http://localhost:8000"];
-  if (typeof window === "undefined") return [API_BASE];
-
-  const currentHost = window.location.hostname;
-  if (currentHost === "localhost" || currentHost === "127.0.0.1") {
-    return localBases;
-  }
-
-  return [API_BASE, ...localBases.filter((base) => base !== API_BASE)];
-};
-
-const fetchRelationshipApi = async (path, options) => {
-  const candidates = getApiBaseCandidates();
-  let lastError = null;
-
-  for (const base of candidates) {
-    try {
-      return await fetch(`${base}${path}`, options);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw new Error(
-    `Could not reach the backend at ${candidates.join(" or ")}. Start FastAPI with: uvicorn backend.main:app --host 127.0.0.1 --port 8000`,
-    { cause: lastError },
-  );
-};
 
 const getInitialPage = () => {
   if (typeof window === "undefined") return "landing";
@@ -215,7 +182,7 @@ const normalizeRelationshipEntry = (entry, fallbackMatch = {}) => {
     ? entry.relationshipScore
     : entry.relationship_score;
 
-  return {
+  const normalizedEntry = {
     investorName,
     matchScore: hasValue(entry.matchScore)
       ? entry.matchScore
@@ -229,6 +196,105 @@ const normalizeRelationshipEntry = (entry, fallbackMatch = {}) => {
     bestPath,
     edges: toArray(entry.edges),
     evidence: toArray(entry.evidence).filter(Boolean),
+  };
+
+  return {
+    ...normalizedEntry,
+    warmIntro: normalizeWarmIntro(entry, normalizedEntry),
+  };
+};
+
+const getConfidenceLabel = (confidence, score) => {
+  if (["High", "Medium", "Low"].includes(confidence)) return confidence;
+  if (typeof score === "number") {
+    if (score >= 75) return "High";
+    if (score >= 45) return "Medium";
+    return "Low";
+  }
+  if (confidence) return "High";
+  return undefined;
+};
+
+const inferIntroducer = (nodes) => nodes.find((node, index) => index > 0 && index < nodes.length - 1 && node.type === "person") || nodes[1];
+
+const normalizeWarmIntro = (entry, normalizedEntry) => {
+  const pathNodes = normalizedEntry.bestPath || [];
+  if (!pathNodes.length) return null;
+
+  const pathEdges = toArray(entry.pathEdges || entry.path_edges || entry.edges);
+  const generatedEdges = pathEdges.length
+    ? pathEdges
+    : pathNodes.slice(0, -1).map((node, index) => ({
+        source: node.id,
+        target: pathNodes[index + 1].id,
+        relationshipType: entry.match_type || entry.relationshipType || entry.relationship_type,
+        confidence: entry.confidence,
+      }));
+  const introducer = entry.introducerName || entry.introducer_name
+    ? {
+        label: entry.introducerName || entry.introducer_name,
+        subtitle: entry.introducerRole || entry.introducer_role,
+      }
+    : inferIntroducer(pathNodes);
+  const pathScore = hasValue(entry.pathScore)
+    ? entry.pathScore
+    : hasValue(entry.path_score)
+      ? Math.round(entry.path_score)
+      : normalizedEntry.relationshipScore;
+
+  return {
+    id: entry.id || slugifyId(`${normalizedEntry.investorName}-${pathNodes.map((node) => node.label).join("-")}`, "warm-intro"),
+    investorName: normalizedEntry.investorName,
+    targetContact: entry.targetContact || entry.target_contact,
+    introducerName: introducer?.label,
+    introducerRole: introducer?.subtitle,
+    pathNodes,
+    pathEdges: generatedEdges,
+    pathScore,
+    confidence: getConfidenceLabel(entry.confidence, pathScore),
+    evidence: normalizedEntry.evidence || [],
+    suggestedAction: entry.suggestedAction || entry.suggested_action,
+  };
+};
+
+const getWarmIntroPathSummary = (warmIntro) => {
+  const labels = warmIntro?.pathNodes?.map((node) => node.label).filter(Boolean) || [];
+  return labels.join(" -> ");
+};
+
+const buildOutreachEmail = ({ formData, warmIntro, emailTone, fallbackInvestor }) => {
+  const founderName = formData.name || "Founder";
+  const startupName = formData.startupName || "our startup";
+  const investorName = warmIntro?.investorName || fallbackInvestor || "the investor";
+  const introducerName = warmIntro?.introducerName;
+  const pathSummary = getWarmIntroPathSummary(warmIntro);
+  const relationshipReason = pathSummary || warmIntro?.evidence?.[0] || "your network";
+  const startupDescription =
+    formData.fundraisingPreference ||
+    [formData.stage, formData.industry?.join(", ")].filter(Boolean).join(" ") ||
+    "company";
+  const deckLine = formData.pitchDeck ? "\n\nI can also share our pitch deck for more context." : "";
+  const concise = emailTone === "Concise";
+  const friendlyGreeting = emailTone === "Friendly" ? "I hope you're doing well." : "I hope you're doing well.";
+
+  if (!introducerName) {
+    return {
+      to: warmIntro?.targetContact || investorName,
+      introRequestTo: "",
+      subject: `Introduction: ${startupName} x ${investorName}`,
+      body: concise
+        ? `Hi ${investorName},\n\nI'm ${founderName}, founder of ${startupName}. We are building ${startupDescription}.\n\nBased on your investment focus, I believe there may be a strong fit between our company and your portfolio.${deckLine}\n\nI'd love to share more and see if this could be relevant.\n\nBest,\n${founderName}`
+        : `Hi ${investorName},\n\nI'm ${founderName}, founder of ${startupName}. We are building ${startupDescription}.\n\nBased on your investment focus, I believe there may be a strong fit between our company and your portfolio.${deckLine}\n\nI'd love to share more and see if this could be relevant.\n\nBest,\n${founderName}`,
+    };
+  }
+
+  return {
+    to: warmIntro?.targetContact || investorName,
+    introRequestTo: introducerName,
+    subject: `Warm introduction to ${investorName}?`,
+    body: concise
+      ? `Hi ${introducerName},\n\nI'm reaching out because you may be connected to ${investorName} through ${relationshipReason}.\n\nI'm currently building ${startupName}, a ${startupDescription}. I think ${investorName} could be a strong fit for our current fundraising goals.${deckLine}\n\nWould you feel comfortable making a brief introduction?\n\nBest,\n${founderName}`
+      : `Hi ${introducerName},\n\n${friendlyGreeting} I'm reaching out because I noticed you may be connected to ${investorName} through ${relationshipReason}.\n\nI'm currently building ${startupName}, a ${startupDescription}. Based on their investment focus and our current fundraising goals, I think ${investorName} could be a strong fit.${deckLine}\n\nWould you feel comfortable making a brief introduction?\n\nI'm happy to send over a short blurb or forwardable note.\n\nBest,\n${founderName}`,
   };
 };
 
@@ -304,6 +370,11 @@ export default function FounderIntakeForm() {
   const [connectionDataFile, setConnectionDataFile] = useState(null);
   const [relationshipLoading, setRelationshipLoading] = useState(false);
   const [relationshipError, setRelationshipError] = useState("");
+  const [selectedWarmIntro, setSelectedWarmIntro] = useState(null);
+  const [selectedInvestor, setSelectedInvestor] = useState(null);
+  const [generatedEmail, setGeneratedEmail] = useState({ to: "", introRequestTo: "", subject: "", body: "" });
+  const [emailTone, setEmailTone] = useState("Professional");
+  const [emailNotice, setEmailNotice] = useState("");
   const [deckBoost, setDeckBoost] = useState(0);
   const [deckError, setDeckError] = useState("");
   const [activePanel, setActivePanel] = useState(null);
@@ -403,11 +474,13 @@ export default function FounderIntakeForm() {
       setMatches([]);
       setRelationshipInsights([]);
       setSelectedRelationshipIndex(0);
+      setSelectedWarmIntro(null);
+      setSelectedInvestor(null);
 
       const startedAt = Date.now();
 
       try {
-        const submitResponse = await fetch(`${API_BASE}/submit-founder`, {
+        const submitData = await apiFetch("/submit-founder", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -428,15 +501,10 @@ export default function FounderIntakeForm() {
           }),
         });
 
-        if (!submitResponse.ok) throw new Error("Founder submit failed");
-        const submitData = await submitResponse.json();
-
-        const matchResponse = await fetch(`${API_BASE}/match-investors/${submitData.startup_id}`, {
+        const matchData = await apiFetch(`/match-investors/${submitData.startup_id}`, {
           method: "POST",
         });
 
-        if (!matchResponse.ok) throw new Error("Matching failed");
-        const matchData = await matchResponse.json();
         const topInvestors = (matchData.top_investors || []).slice(0, 15);
 
         const normalizedMatches = topInvestors.length
@@ -457,6 +525,8 @@ export default function FounderIntakeForm() {
           setMatches(normalizedMatches);
           setRelationshipInsights(normalizedRelationships);
           setSelectedRelationshipIndex(0);
+          setSelectedWarmIntro(normalizedRelationships[0]?.warmIntro || null);
+          setSelectedInvestor(normalizedRelationships[0]?.investorName || null);
           setMatchingSource(topInvestors.length ? "backend" : "demo");
           setMatchingLoading(false);
         }, remainingDelay);
@@ -467,6 +537,8 @@ export default function FounderIntakeForm() {
           setMatches(demoMatches);
           setRelationshipInsights([]);
           setSelectedRelationshipIndex(0);
+          setSelectedWarmIntro(null);
+          setSelectedInvestor(null);
           setMatchingSource("demo");
           setMatchingLoading(false);
         }, remainingDelay);
@@ -479,6 +551,12 @@ export default function FounderIntakeForm() {
       cancelled = true;
     };
   }, [page]);
+
+  useEffect(() => {
+    const nextWarmIntro = relationshipInsights[selectedRelationshipIndex]?.warmIntro || null;
+    setSelectedWarmIntro(nextWarmIntro);
+    setSelectedInvestor(nextWarmIntro?.investorName || null);
+  }, [relationshipInsights, selectedRelationshipIndex]);
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
@@ -608,6 +686,8 @@ export default function FounderIntakeForm() {
     setRelationshipError("");
     setRelationshipInsights([]);
     setSelectedRelationshipIndex(0);
+    setSelectedWarmIntro(null);
+    setSelectedInvestor(null);
 
     try {
       const connectionsCsv = await file.text();
@@ -626,35 +706,60 @@ export default function FounderIntakeForm() {
         connections_csv: connectionsCsv,
       };
 
-      const response = await fetchRelationshipApi("/relationship-intelligence", {
+      const data = await apiFetch("/relationship-intelligence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        let detail = "Relationship intelligence failed";
-        try {
-          const errorData = await response.json();
-          detail = errorData.detail || detail;
-        } catch (error) {
-          detail = await response.text();
-        }
-        throw new Error(detail);
-      }
-      const data = await response.json();
-      setRelationshipInsights(normalizeRelationshipIntelligence({ relationship_results: data }, displayedMatches));
+      const normalizedRelationships = normalizeRelationshipIntelligence({ relationship_results: data }, displayedMatches);
+      setRelationshipInsights(normalizedRelationships);
+      setSelectedWarmIntro(normalizedRelationships[0]?.warmIntro || null);
+      setSelectedInvestor(normalizedRelationships[0]?.investorName || null);
     } catch (error) {
       setRelationshipInsights([]);
-      setRelationshipError(
-        error?.message
-          ? `Unable to generate relationship intelligence: ${error.message}`
-          : "Unable to generate relationship intelligence from the uploaded connection data.",
-      );
+      setSelectedWarmIntro(null);
+      setSelectedInvestor(null);
+      setRelationshipError("Unable to generate relationship intelligence. Please check that the backend service is available.");
     } finally {
       setRelationshipLoading(false);
       e.target.value = "";
     }
+  };
+
+  const selectWarmIntroByIndex = (index) => {
+    const nextInsight = relationshipInsights[index];
+    setSelectedRelationshipIndex(index);
+    setSelectedWarmIntro(nextInsight?.warmIntro || null);
+    setSelectedInvestor(nextInsight?.investorName || null);
+    setGeneratedEmail({ to: "", introRequestTo: "", subject: "", body: "" });
+    setEmailNotice("");
+  };
+
+  const handleGenerateWarmIntroEmail = () => {
+    const email = buildOutreachEmail({
+      formData,
+      warmIntro: selectedWarmIntro,
+      emailTone,
+      fallbackInvestor: selectedInvestor || displayedMatches[0]?.entity_name,
+    });
+    setGeneratedEmail(email);
+    setEmailNotice("");
+  };
+
+  const handleCopyEmail = async () => {
+    const text = `Subject: ${generatedEmail.subject}\n\n${generatedEmail.body}`;
+    if (!generatedEmail.subject && !generatedEmail.body) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setEmailNotice("Email copied to clipboard.");
+    } catch (error) {
+      setEmailNotice("Copy failed. Select the draft text and copy it manually.");
+    }
+  };
+
+  const handleSendEmail = () => {
+    setEmailNotice("Email draft prepared. Connect email service to send directly.");
   };
 
   const handleSubmit = (e) => {
@@ -1151,11 +1256,22 @@ export default function FounderIntakeForm() {
               matchingSource={matchingSource}
               relationshipInsights={relationshipInsights}
               selectedRelationshipIndex={selectedRelationshipIndex}
-              setSelectedRelationshipIndex={setSelectedRelationshipIndex}
+              onWarmIntroSelect={selectWarmIntroByIndex}
+              selectedWarmIntro={selectedWarmIntro}
+              selectedInvestor={selectedInvestor}
+              generatedEmail={generatedEmail}
+              setGeneratedEmail={setGeneratedEmail}
+              emailTone={emailTone}
+              setEmailTone={setEmailTone}
+              emailNotice={emailNotice}
+              onGenerateWarmIntroEmail={handleGenerateWarmIntroEmail}
+              onCopyEmail={handleCopyEmail}
+              onSendEmail={handleSendEmail}
               connectionDataFile={connectionDataFile}
               relationshipLoading={relationshipLoading}
               relationshipError={relationshipError}
               onConnectionDataChange={handleConnectionDataChange}
+              onOpenOutreach={() => setActivePanel({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." })}
               chatMessages={chatMessages}
               chatInput={chatInput}
               setChatInput={setChatInput}
@@ -1459,11 +1575,22 @@ function DashboardDrawer({
   matchingSource,
   relationshipInsights,
   selectedRelationshipIndex,
-  setSelectedRelationshipIndex,
+  onWarmIntroSelect,
+  selectedWarmIntro,
+  selectedInvestor,
+  generatedEmail,
+  setGeneratedEmail,
+  emailTone,
+  setEmailTone,
+  emailNotice,
+  onGenerateWarmIntroEmail,
+  onCopyEmail,
+  onSendEmail,
   connectionDataFile,
   relationshipLoading,
   relationshipError,
   onConnectionDataChange,
+  onOpenOutreach,
   chatMessages,
   chatInput,
   setChatInput,
@@ -1492,13 +1619,30 @@ function DashboardDrawer({
           <InvestorDetailPanel investor={activePanel.investor} />
         ) : activePanel.id === "relationship" ? (
           <RelationshipIntelligencePanel
+            matches={matches}
             connectionDataFile={connectionDataFile}
             relationshipInsights={relationshipInsights}
             selectedRelationshipIndex={selectedRelationshipIndex}
-            setSelectedRelationshipIndex={setSelectedRelationshipIndex}
+            selectedWarmIntro={selectedWarmIntro}
+            onWarmIntroSelect={onWarmIntroSelect}
             relationshipLoading={relationshipLoading}
             relationshipError={relationshipError}
             onConnectionDataChange={onConnectionDataChange}
+            onOpenOutreach={onOpenOutreach}
+          />
+        ) : activePanel.id === "outreach" ? (
+          <OutreachPanel
+            formData={formData}
+            selectedWarmIntro={selectedWarmIntro}
+            selectedInvestor={selectedInvestor || matches[0]?.entity_name}
+            generatedEmail={generatedEmail}
+            setGeneratedEmail={setGeneratedEmail}
+            emailTone={emailTone}
+            setEmailTone={setEmailTone}
+            emailNotice={emailNotice}
+            onGenerateWarmIntroEmail={onGenerateWarmIntroEmail}
+            onCopyEmail={onCopyEmail}
+            onSendEmail={onSendEmail}
           />
         ) : (
           <ChatWorkspace
@@ -1731,18 +1875,22 @@ function formatRelationshipScore(value) {
 }
 
 function RelationshipIntelligencePanel({
+  matches,
   connectionDataFile,
   relationshipInsights,
   selectedRelationshipIndex,
-  setSelectedRelationshipIndex,
+  selectedWarmIntro,
+  onWarmIntroSelect,
   relationshipLoading,
   relationshipError,
   onConnectionDataChange,
+  onOpenOutreach,
 }) {
   const locked = !connectionDataFile;
   const hasRelationshipData = relationshipInsights.length > 0;
   const safeIndex = Math.min(selectedRelationshipIndex, Math.max(relationshipInsights.length - 1, 0));
   const selectedInsight = relationshipInsights[safeIndex];
+  const fallbackInvestor = selectedWarmIntro?.investorName || selectedInsight?.investorName || matches[0]?.entity_name;
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50 p-5">
@@ -1767,16 +1915,22 @@ function RelationshipIntelligencePanel({
           <div className={locked || relationshipLoading ? "pointer-events-none select-none blur-[3px]" : ""}>
             {hasRelationshipData ? (
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-                <RelationshipGraph insight={selectedInsight} />
+                <RelationshipGraph
+                  warmIntro={selectedWarmIntro}
+                  fallbackInvestor={fallbackInvestor}
+                  onSelect={() => onWarmIntroSelect(safeIndex)}
+                />
                 <RelationshipSummaryPanel
                   insights={relationshipInsights}
                   selectedIndex={safeIndex}
                   selectedInsight={selectedInsight}
-                  onSelect={setSelectedRelationshipIndex}
+                  selectedWarmIntro={selectedWarmIntro}
+                  onSelect={onWarmIntroSelect}
+                  onOpenOutreach={onOpenOutreach}
                 />
               </div>
             ) : (
-              <EmptyRelationshipState />
+              <EmptyRelationshipState title="No warm introduction path found." investorName={fallbackInvestor} />
             )}
           </div>
 
@@ -1807,24 +1961,27 @@ function RelationshipIntelligencePanel({
   );
 }
 
-function RelationshipGraph({ insight }) {
-  const nodes = insight?.bestPath || [];
-  const edges = insight?.edges || [];
+function RelationshipGraph({ warmIntro, fallbackInvestor, onSelect }) {
+  const nodes = warmIntro?.pathNodes || [];
+  const edges = warmIntro?.pathEdges || [];
 
-  if (!nodes.length) return <EmptyRelationshipState compact />;
+  if (!nodes.length) return <EmptyRelationshipState compact title="No warm introduction path found." investorName={fallbackInvestor} />;
 
   return (
     <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-slate-950">Network Visualization</p>
-          <p className="mt-1 text-xs text-slate-500">Best path rendered from relationship data.</p>
+          <p className="mt-1 text-xs text-slate-500">Selected warm introduction path from relationship data.</p>
         </div>
-        <Network size={18} className="text-blue-700" />
+        <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
+          <Network size={13} />
+          Best Warm Intro
+        </span>
       </div>
 
       <div className="min-h-[330px] overflow-x-auto rounded-lg border border-slate-200 bg-white p-4">
-        <div className="flex min-w-max items-center py-16">
+        <button type="button" onClick={onSelect} className="flex min-w-max items-center py-16 text-left">
           {nodes.map((node, index) => {
             const nextNode = nodes[index + 1];
             const edge = nextNode ? getConsecutiveEdge(edges, node, nextNode) : null;
@@ -1832,7 +1989,7 @@ function RelationshipGraph({ insight }) {
 
             return (
               <React.Fragment key={node.id}>
-                <div className={`flex w-36 shrink-0 flex-col items-center rounded-lg border p-3 text-center shadow-sm ${getRelationshipNodeStyles(node.type)}`}>
+                <div className={`flex w-36 shrink-0 flex-col items-center rounded-lg border-2 p-3 text-center shadow-sm ring-2 ring-blue-100 ${getRelationshipNodeStyles(node.type)}`}>
                   <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-white/70 text-blue-700 ring-1 ring-black/5">
                     {getRelationshipNodeIcon(node.type)}
                   </div>
@@ -1843,8 +2000,8 @@ function RelationshipGraph({ insight }) {
 
                 {nextNode && (
                   <div className="relative flex w-24 shrink-0 items-center justify-center">
-                    <div className="h-px w-full bg-blue-300" />
-                    <ArrowRight className="absolute right-0 text-blue-500" size={16} />
+                    <div className="h-0.5 w-full bg-blue-500" />
+                    <ArrowRight className="absolute right-0 text-blue-600" size={16} />
                     {edgeLabel && (
                       <span className="absolute -top-7 max-w-24 truncate rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 ring-1 ring-blue-100">
                         {edgeLabel}
@@ -1855,14 +2012,15 @@ function RelationshipGraph({ insight }) {
               </React.Fragment>
             );
           })}
-        </div>
+        </button>
       </div>
     </section>
   );
 }
 
-function RelationshipSummaryPanel({ insights, selectedIndex, selectedInsight, onSelect }) {
-  if (!selectedInsight) return <EmptyRelationshipState compact />;
+function RelationshipSummaryPanel({ insights, selectedIndex, selectedInsight, selectedWarmIntro, onSelect, onOpenOutreach }) {
+  if (!selectedInsight) return <EmptyRelationshipState compact title="No warm introduction path found." />;
+  const pathSummary = getWarmIntroPathSummary(selectedWarmIntro);
 
   return (
     <aside className="rounded-lg border border-slate-200 bg-white p-4">
@@ -1898,6 +2056,26 @@ function RelationshipSummaryPanel({ insights, selectedIndex, selectedInsight, on
       )}
 
       <div className="mt-5 space-y-3 text-sm">
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+          <p className="text-xs font-semibold uppercase text-blue-700">Warm Introduction Path</p>
+          {selectedWarmIntro?.pathNodes?.length > 0 ? (
+            <>
+              <p className="mt-2 font-semibold leading-6 text-slate-950">{pathSummary}</p>
+              {selectedWarmIntro.introducerName && (
+                <p className="mt-2 text-sm text-slate-700">Suggested introducer: {selectedWarmIntro.introducerName}</p>
+              )}
+              {hasValue(selectedWarmIntro.pathScore) && (
+                <p className="mt-2 text-sm text-slate-700">Path score: {formatRelationshipScore(selectedWarmIntro.pathScore)}</p>
+              )}
+              {selectedWarmIntro.confidence && (
+                <p className="mt-1 text-sm text-slate-700">Confidence: {selectedWarmIntro.confidence}</p>
+              )}
+            </>
+          ) : (
+            <p className="mt-2 text-sm font-semibold text-slate-600">No warm introduction path found.</p>
+          )}
+        </div>
+
         {hasValue(selectedInsight.relationshipScore) && (
           <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase text-slate-500">Relationship Score</p>
@@ -1943,7 +2121,7 @@ function RelationshipSummaryPanel({ insights, selectedIndex, selectedInsight, on
         )}
       </div>
 
-      <button type="button" className="mt-5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#07182f] px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
+      <button type="button" onClick={onOpenOutreach} className="mt-5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#07182f] px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
         <Send size={16} />
         Suggested outreach
       </button>
@@ -1951,17 +2129,152 @@ function RelationshipSummaryPanel({ insights, selectedIndex, selectedInsight, on
   );
 }
 
-function EmptyRelationshipState({ compact = false }) {
+function EmptyRelationshipState({ compact = false, title = "No relationship path found yet.", investorName = "" }) {
   return (
     <div className={`rounded-lg border border-dashed border-slate-300 bg-white p-5 text-center ${compact ? "" : "min-h-[280px] flex flex-col items-center justify-center"}`}>
       <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
         <Network size={18} />
       </div>
-      <p className="mt-3 text-sm font-semibold text-slate-950">No relationship path found yet.</p>
+      <p className="mt-3 text-sm font-semibold text-slate-950">{title}</p>
+      {investorName && <p className="mt-1 text-sm font-semibold text-blue-700">Investor match: {investorName}</p>}
       <p className="mt-1 text-sm leading-6 text-slate-500">
         Try uploading LinkedIn connection data or adding founder network information.
       </p>
     </div>
+  );
+}
+
+function OutreachPanel({
+  formData,
+  selectedWarmIntro,
+  selectedInvestor,
+  generatedEmail,
+  setGeneratedEmail,
+  emailTone,
+  setEmailTone,
+  emailNotice,
+  onGenerateWarmIntroEmail,
+  onCopyEmail,
+  onSendEmail,
+}) {
+  const hasIntroducer = Boolean(selectedWarmIntro?.introducerName);
+  const pathSummary = getWarmIntroPathSummary(selectedWarmIntro);
+
+  return (
+    <div className="flex-1 overflow-auto bg-slate-50 p-5">
+      <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
+        <aside className="space-y-4">
+          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase text-blue-700">Warm Intro Helper</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-950">{selectedWarmIntro?.investorName || selectedInvestor || "Investor outreach"}</h3>
+            {selectedWarmIntro?.pathNodes?.length > 0 ? (
+              <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                <p className="text-xs font-semibold uppercase text-blue-700">Warm Introduction Path</p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-950">{pathSummary}</p>
+                {selectedWarmIntro.introducerName && (
+                  <p className="mt-2 text-sm text-slate-700">Suggested introducer: {selectedWarmIntro.introducerName}</p>
+                )}
+                {selectedWarmIntro.confidence && <p className="mt-1 text-sm text-slate-700">Confidence: {selectedWarmIntro.confidence}</p>}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-slate-700">No warm introducer found. Generate direct investor outreach instead.</p>
+              </div>
+            )}
+            {!formData.pitchDeck && (
+              <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
+                Upload a pitch deck to strengthen this outreach.
+              </p>
+            )}
+          </section>
+
+          {selectedWarmIntro?.evidence?.length > 0 && (
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase text-slate-500">Evidence & Signals</p>
+              <ul className="mt-3 space-y-2">
+                {selectedWarmIntro.evidence.map((evidence) => (
+                  <li key={evidence} className="flex gap-2 text-sm leading-5 text-slate-600">
+                    <CheckCircle2 className="mt-0.5 shrink-0 text-blue-600" size={15} />
+                    <span>{evidence}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </aside>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase text-blue-700">Outreach Email</p>
+              <h3 className="mt-1 text-lg font-semibold text-slate-950">
+                {hasIntroducer ? "Warm intro request" : "Direct investor outreach"}
+              </h3>
+            </div>
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+              {["Professional", "Friendly", "Concise"].map((tone) => (
+                <button
+                  key={tone}
+                  type="button"
+                  onClick={() => setEmailTone(tone)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                    emailTone === tone ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"
+                  }`}
+                >
+                  {tone}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <InputLike label="To" value={generatedEmail.to || selectedWarmIntro?.targetContact || selectedWarmIntro?.investorName || selectedInvestor || ""} onChange={(value) => setGeneratedEmail((prev) => ({ ...prev, to: value }))} />
+            <InputLike label="Intro Request To" value={generatedEmail.introRequestTo || selectedWarmIntro?.introducerName || ""} onChange={(value) => setGeneratedEmail((prev) => ({ ...prev, introRequestTo: value }))} />
+          </div>
+          <div className="mt-4">
+            <InputLike label="Subject" value={generatedEmail.subject} onChange={(value) => setGeneratedEmail((prev) => ({ ...prev, subject: value }))} />
+          </div>
+          <div className="mt-4">
+            <label className="mb-2 block text-sm font-semibold text-slate-700">Email body</label>
+            <textarea
+              value={generatedEmail.body}
+              onChange={(e) => setGeneratedEmail((prev) => ({ ...prev, body: e.target.value }))}
+              rows={13}
+              className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm leading-6 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button type="button" onClick={onGenerateWarmIntroEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
+              <Sparkles size={16} />
+              Generate Warm Intro Email
+            </button>
+            <button type="button" onClick={onCopyEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
+              <Link size={16} />
+              Copy Email
+            </button>
+            <button type="button" onClick={onSendEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#07182f] px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
+              <Send size={16} />
+              Send Email
+            </button>
+          </div>
+          {emailNotice && <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">{emailNotice}</p>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function InputLike({ label, value, onChange }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <input
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+      />
+    </label>
   );
 }
 
