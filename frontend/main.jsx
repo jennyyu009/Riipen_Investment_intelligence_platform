@@ -1,9 +1,9 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import FounderIntakeForm from "./input.jsx";
+import RelationshipIntelligenceMap from "./RelationshipIntelligenceMap";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <FounderIntakeForm />
+    <RelationshipIntelligenceMap />
   </React.StrictMode>,
 );
