@@ -188,7 +188,9 @@ const normalizeRelationshipEntry = (entry, fallbackMatch = {}) => {
       ? entry.matchScore
       : hasValue(entry.match_score)
         ? entry.match_score
-        : fallbackMatch.final_score,
+        : hasValue(entry.matching_score)
+          ? entry.matching_score
+          : fallbackMatch.final_score,
     relationshipScore,
     confidence: entry.confidence,
     bestPath,
@@ -212,7 +214,7 @@ const normalizeRelationshipIntelligence = (payload, matches = []) => {
     return paths.map((path) => ({
       ...path,
       investorName: entry.investorName || entry.investor_name || entry.entity_name,
-      matchScore: entry.matchScore || entry.match_score || entry.final_score,
+      matchScore: entry.matchScore || entry.match_score || entry.matching_score || entry.final_score,
     }));
   });
   const matchEntries = matches.flatMap((match) => {
@@ -266,6 +268,9 @@ export default function FounderIntakeForm() {
   const [matchingSource, setMatchingSource] = useState("demo");
   const [relationshipInsights, setRelationshipInsights] = useState([]);
   const [selectedRelationshipIndex, setSelectedRelationshipIndex] = useState(0);
+  const [connectionDataFile, setConnectionDataFile] = useState(null);
+  const [relationshipLoading, setRelationshipLoading] = useState(false);
+  const [relationshipError, setRelationshipError] = useState("");
   const [deckBoost, setDeckBoost] = useState(0);
   const [deckError, setDeckError] = useState("");
   const [activePanel, setActivePanel] = useState(null);
@@ -403,6 +408,7 @@ export default function FounderIntakeForm() {
 
         const normalizedMatches = topInvestors.length
           ? topInvestors.map((investor, index) => ({
+              ...investor,
               investor_id: investor.investor_id || index + 1,
               entity_name: investor.entity_name || `Investor ${index + 1}`,
               final_score: investor.final_score || investor.final_score_scaled || 0,
@@ -533,7 +539,7 @@ export default function FounderIntakeForm() {
     {
       id: "relationship",
       title: "Relationship Intelligence",
-      subtitle: "Add customer context and warm intro notes.",
+      subtitle: "Upload connection data and generate warm paths.",
       icon: <Network size={20} />,
     },
     {
@@ -552,6 +558,58 @@ export default function FounderIntakeForm() {
     { label: "Warm Intro Paths", value: "24", detail: "Qualified relationship paths", icon: <Handshake size={19} /> },
     { label: "Network Connections", value: "87", detail: "Mapped venture contacts", icon: <UsersRound size={19} /> },
   ];
+
+  const handleConnectionDataChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isCsv = file.type === "text/csv" || file.name.toLowerCase().endsWith(".csv");
+    if (!isCsv) {
+      setRelationshipError("Connection data must be a CSV file.");
+      e.target.value = "";
+      return;
+    }
+
+    setConnectionDataFile(file);
+    setRelationshipLoading(true);
+    setRelationshipError("");
+    setRelationshipInsights([]);
+    setSelectedRelationshipIndex(0);
+
+    try {
+      const connectionsCsv = await file.text();
+      const payload = {
+        founder_data: {
+          name: formData.name || "Founder",
+          linkedin_url: formData.linkedinUrl,
+          current_role: formData.currentRole,
+          email: formData.email,
+        },
+        top_investors: displayedMatches.slice(0, 15).map((investor) => ({
+          ...investor,
+          investor_name: investor.entity_name,
+          matching_score: investor.final_score,
+        })),
+        connections_csv: connectionsCsv,
+      };
+
+      const response = await fetch(`${API_BASE}/relationship-intelligence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error("Relationship intelligence failed");
+      const data = await response.json();
+      setRelationshipInsights(normalizeRelationshipIntelligence({ relationship_results: data }, displayedMatches));
+    } catch (error) {
+      setRelationshipInsights([]);
+      setRelationshipError("Unable to generate relationship intelligence from the uploaded connection data.");
+    } finally {
+      setRelationshipLoading(false);
+      e.target.value = "";
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -1048,8 +1106,10 @@ export default function FounderIntakeForm() {
               relationshipInsights={relationshipInsights}
               selectedRelationshipIndex={selectedRelationshipIndex}
               setSelectedRelationshipIndex={setSelectedRelationshipIndex}
-              onPitchDeckChange={handlePitchDeckChange}
-              deckError={deckError}
+              connectionDataFile={connectionDataFile}
+              relationshipLoading={relationshipLoading}
+              relationshipError={relationshipError}
+              onConnectionDataChange={handleConnectionDataChange}
               chatMessages={chatMessages}
               chatInput={chatInput}
               setChatInput={setChatInput}
@@ -1354,8 +1414,10 @@ function DashboardDrawer({
   relationshipInsights,
   selectedRelationshipIndex,
   setSelectedRelationshipIndex,
-  onPitchDeckChange,
-  deckError,
+  connectionDataFile,
+  relationshipLoading,
+  relationshipError,
+  onConnectionDataChange,
   chatMessages,
   chatInput,
   setChatInput,
@@ -1384,12 +1446,13 @@ function DashboardDrawer({
           <InvestorDetailPanel investor={activePanel.investor} />
         ) : activePanel.id === "relationship" ? (
           <RelationshipIntelligencePanel
-            pitchDeck={formData.pitchDeck}
+            connectionDataFile={connectionDataFile}
             relationshipInsights={relationshipInsights}
             selectedRelationshipIndex={selectedRelationshipIndex}
             setSelectedRelationshipIndex={setSelectedRelationshipIndex}
-            onPitchDeckChange={onPitchDeckChange}
-            deckError={deckError}
+            relationshipLoading={relationshipLoading}
+            relationshipError={relationshipError}
+            onConnectionDataChange={onConnectionDataChange}
           />
         ) : (
           <ChatWorkspace
@@ -1622,14 +1685,15 @@ function formatRelationshipScore(value) {
 }
 
 function RelationshipIntelligencePanel({
-  pitchDeck,
+  connectionDataFile,
   relationshipInsights,
   selectedRelationshipIndex,
   setSelectedRelationshipIndex,
-  onPitchDeckChange,
-  deckError,
+  relationshipLoading,
+  relationshipError,
+  onConnectionDataChange,
 }) {
-  const locked = !pitchDeck;
+  const locked = !connectionDataFile;
   const hasRelationshipData = relationshipInsights.length > 0;
   const safeIndex = Math.min(selectedRelationshipIndex, Math.max(relationshipInsights.length - 1, 0));
   const selectedInsight = relationshipInsights[safeIndex];
@@ -1641,18 +1705,20 @@ function RelationshipIntelligencePanel({
           <div>
             <p className="text-xs font-semibold uppercase text-blue-700">Relationship Intelligence</p>
             <h3 className="mt-1 text-xl font-semibold text-slate-950">Founder & Startup Profile</h3>
-            <p className="mt-1 text-sm text-slate-500">Relationship paths unlock after a pitch deck is uploaded.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {connectionDataFile ? connectionDataFile.name : "Upload LinkedIn connection data to build relationship paths."}
+            </p>
           </div>
           <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
             <Upload size={16} />
-            Upload Pitch Deck
-            <input type="file" accept="application/pdf,.pdf" onChange={onPitchDeckChange} className="hidden" />
+            Upload Connection Data
+            <input type="file" accept=".csv,text/csv" onChange={onConnectionDataChange} className="hidden" />
           </label>
         </div>
-        {deckError && <p className="mt-3 text-sm font-semibold text-rose-600">{deckError}</p>}
+        {relationshipError && <p className="mt-3 text-sm font-semibold text-rose-600">{relationshipError}</p>}
 
         <div className="relative mt-5">
-          <div className={locked ? "pointer-events-none select-none blur-[3px]" : ""}>
+          <div className={locked || relationshipLoading ? "pointer-events-none select-none blur-[3px]" : ""}>
             {hasRelationshipData ? (
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
                 <RelationshipGraph insight={selectedInsight} />
@@ -1668,20 +1734,24 @@ function RelationshipIntelligencePanel({
             )}
           </div>
 
-          {locked && (
+          {(locked || relationshipLoading) && (
             <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/75 px-4 backdrop-blur-[1px]">
               <div className="max-w-sm rounded-lg border border-blue-100 bg-white p-5 text-center shadow-sm">
                 <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                  <FileText size={20} />
+                  {relationshipLoading ? <Loader2 className="animate-spin" size={20} /> : <Network size={20} />}
                 </div>
                 <p className="mt-3 text-sm font-semibold text-slate-950">
-                  Upload your pitch deck to unlock relationship intelligence insights.
+                  {relationshipLoading
+                    ? "Generating relationship intelligence from your connection data."
+                    : "Upload your connection data to unlock relationship intelligence insights."}
                 </p>
-                <label className="mt-4 inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
-                  <Upload size={16} />
-                  Upload Pitch Deck
-                  <input type="file" accept="application/pdf,.pdf" onChange={onPitchDeckChange} className="hidden" />
-                </label>
+                {!relationshipLoading && (
+                  <label className="mt-4 inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
+                    <Upload size={16} />
+                    Upload Connection Data
+                    <input type="file" accept=".csv,text/csv" onChange={onConnectionDataChange} className="hidden" />
+                  </label>
+                )}
               </div>
             </div>
           )}
