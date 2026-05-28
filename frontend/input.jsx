@@ -7,45 +7,110 @@ import {
   CheckCircle2,
   CircleDollarSign,
   FileText,
+  Handshake,
+  Home,
   Loader2,
   LogOut,
   Link,
   Mail,
   MessageCircle,
   Network,
+  PieChart,
   Send,
+  Settings,
   ShieldCheck,
   Sparkles,
   TableProperties,
+  Target,
   TrendingUp,
   Upload,
   User,
+  UsersRound,
   X,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 const demoMatches = [
-  "Northstar Ventures",
-  "Blue Ridge Capital",
-  "Maple Seed Fund",
-  "Harbor Growth Partners",
-  "Signal Peak VC",
-  "Frontier Fintech Fund",
-  "Catalyst Angels",
-  "Summit Bridge Capital",
-  "Latitude Ventures",
-  "Meridian Capital",
-  "Foundry Collective",
-  "Arcadia Partners",
-  "Cedar Street Ventures",
-  "Brightline Capital",
-  "Pacific Anchor Fund",
-].map((entityName, index) => ({
+  ["Deloitte Ventures", 98],
+  ["OMERS Ventures", 98],
+  ["Portage Ventures", 94],
+  ["BDC Capital", 91],
+  ["Inovia Capital", 89],
+  ["Real Ventures", 86],
+  ["Golden Ventures", 84],
+  ["Relay Ventures", 82],
+  ["Georgian", 79],
+  ["Diagram Ventures", 77],
+  ["Information Venture Partners", 74],
+  ["StandUp Ventures", 72],
+  ["ScaleUp Ventures", 69],
+  ["Panache Ventures", 66],
+  ["MaRS IAF", 63],
+].map(([entityName, finalScore], index) => ({
   investor_id: index + 1,
   entity_name: entityName,
-  final_score: Math.max(72, 98 - index * 2),
+  final_score: finalScore,
 }));
+
+const recommendedInvestors = [
+  {
+    name: "Deloitte Ventures",
+    score: 98,
+    label: "Excellent Match",
+    initials: "DV",
+    bullets: [
+      "Fintech thesis aligns with payments infrastructure and compliance workflows.",
+      "Canadian portfolio concentration creates relevant market-pattern overlap.",
+      "Seed-stage appetite matches the current fundraising window.",
+    ],
+    introPath: "Zhixin Yu -> AMG Venture Groups -> Deloitte Fintech Partner",
+  },
+  {
+    name: "OMERS Ventures",
+    score: 98,
+    label: "Excellent Match",
+    initials: "OV",
+    bullets: [
+      "Strong history backing Canadian fintech and enterprise software teams.",
+      "Network overlap through Toronto operators improves intro likelihood.",
+      "Fund size and ownership targets fit a pre-seed to seed raise.",
+    ],
+    introPath: "Zhixin Yu -> Toronto Fintech Founder -> OMERS Ventures Principal",
+  },
+  {
+    name: "Portage Ventures",
+    score: 94,
+    label: "Excellent Match",
+    initials: "PV",
+    bullets: [
+      "Deep vertical focus on financial services modernization.",
+      "Portfolio adjacency suggests practical go-to-market expertise.",
+      "Warm path available through Canadian venture ecosystem contacts.",
+    ],
+    introPath: "Zhixin Yu -> AMG Advisor Network -> Portage Ventures Partner",
+  },
+];
+
+const recentActivities = [
+  "Deloitte Ventures ranking moved to #1 after fintech signal refresh.",
+  "New warm intro path identified through Toronto operator network.",
+  "Pitch deck parser detected missing traction slide.",
+  "OMERS Ventures added to outreach shortlist.",
+];
+
+const sectorBars = [
+  { label: "Fintech", value: 92 },
+  { label: "Enterprise SaaS", value: 68 },
+  { label: "AI Infrastructure", value: 54 },
+  { label: "Marketplaces", value: 31 },
+];
+
+const networkBars = [
+  { label: "Strong", value: 62, color: "bg-emerald-500" },
+  { label: "Medium", value: 28, color: "bg-blue-500" },
+  { label: "Weak", value: 10, color: "bg-slate-300" },
+];
 
 export default function FounderIntakeForm() {
   const [page, setPage] = useState("landing");
@@ -323,6 +388,15 @@ export default function FounderIntakeForm() {
       subtitle: "Capture discovery feedback and investor notes.",
       icon: <MessageCircle size={20} />,
     },
+  ];
+
+  const dashboardUserName = formData.name || "Zhixin Yu";
+  const displayedMatches = matches.length ? matches : demoMatches;
+  const kpiCards = [
+    { label: "Top Matches", value: "15", detail: matchingSource === "backend" ? "Live ranked investors" : "Ranked investor shortlist", icon: <Target size={19} /> },
+    { label: "Pitch Deck Impact", value: `${deckBoost}%`, detail: formData.pitchDeck ? "Lift after deck upload" : "Projected matching lift", icon: <FileText size={19} /> },
+    { label: "Warm Intro Paths", value: "24", detail: "Qualified relationship paths", icon: <Handshake size={19} /> },
+    { label: "Network Connections", value: "87", detail: "Mapped venture contacts", icon: <UsersRound size={19} /> },
   ];
 
   const handleSubmit = (e) => {
@@ -681,235 +755,631 @@ export default function FounderIntakeForm() {
           </div>
         </div>
       ) : (
-        <div className="min-h-screen bg-[#eef3f7] px-4 py-8 text-slate-900">
+        <div className="min-h-screen bg-white text-slate-900 lg:pl-72">
           <style>{`
-            @keyframes scoreGlow {
-              0%, 100% { transform: scale(1); box-shadow: 0 20px 60px rgba(77, 120, 155, .18); }
-              50% { transform: scale(1.04); box-shadow: 0 24px 80px rgba(77, 120, 155, .34); }
-            }
-
             @keyframes loadingSweep {
               0% { transform: translateX(-100%); }
               100% { transform: translateX(100%); }
             }
 
-            .deck-score-glow { animation: scoreGlow 1.8s ease-in-out infinite; }
             .loading-sweep { animation: loadingSweep 1.4s ease-in-out infinite; }
           `}</style>
 
-          <div className="mx-auto max-w-7xl">
-            <div className="mb-6 flex flex-col gap-4 rounded-[28px] border border-white bg-white/90 p-5 shadow-xl shadow-slate-200/60 sm:flex-row sm:items-center sm:justify-between">
+          <Sidebar
+            userName={dashboardUserName}
+            onLogout={handleLogout}
+            onProfileClick={() => openPanel({ id: "profile", title: "Profile", subtitle: "Submitted form table." })}
+            onMatchesClick={() => openPanel(dashboardPanels[0])}
+            onPanelClick={openPanel}
+            panels={dashboardPanels}
+          />
+
+          <main className="mx-auto w-full max-w-[1520px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+            <header className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-6 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <p className="text-sm uppercase tracking-[0.24em] text-[#4d789b]">Dashboard</p>
-                <h1 className="mt-2 text-3xl font-semibold text-slate-950">
-                  Good Evening{formData.name ? `, ${formData.name}` : ""}
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
+                  {matchingLoading ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
+                  {matchingLoading ? "Refreshing investor graph" : matchingSource === "backend" ? "Live ranking model" : "Demo ranking model"}
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                  Good Evening, {dashboardUserName} 👋
                 </h1>
-              </div>
-              <div className="flex items-center gap-3 rounded-3xl bg-slate-50 px-4 py-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#4d789b] text-white">
-                  {formData.name ? formData.name.charAt(0).toUpperCase() : "U"}
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-slate-900">{formData.name || "User"}</p>
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <button type="button" onClick={() => openPanel({ id: "profile", title: "Profile", subtitle: "Submitted form table." })} className="hover:text-[#4d789b]">
-                      Profile
-                    </button>
-                    <span>•</span>
-                    <button type="button" onClick={handleLogout} className="inline-flex items-center gap-1 hover:text-[#4d789b]">
-                      <LogOut size={14} />
-                      Log out
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
-              <button
-                type="button"
-                onClick={() => openPanel(dashboardPanels[0])}
-                className="rounded-[28px] border border-white bg-white p-6 text-left shadow-xl shadow-slate-200/60 transition hover:-translate-y-0.5 hover:shadow-2xl"
-              >
-                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.2em] text-[#4d789b]">Matching</p>
-                    <h2 className="mt-2 text-2xl font-semibold">Top 15 matching results</h2>
-                  </div>
-                  <span className="inline-flex items-center gap-2 rounded-full bg-[#e8f1f7] px-4 py-2 text-sm font-semibold text-[#345f82]">
-                    {matchingLoading ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
-                    {matchingLoading ? "Loading matches" : matchingSource === "backend" ? "Live results" : "Demo results"}
-                  </span>
-                </div>
-
-                {matchingLoading ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3, 4, 5].map((item) => (
-                      <div key={item} className="relative overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                        <div className="loading-sweep absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/80 to-transparent" />
-                        <div className="h-4 w-2/3 rounded-full bg-slate-200" />
-                        <div className="mt-3 h-3 w-1/4 rounded-full bg-slate-200" />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {matches.map((match, index) => (
-                      <div key={`${match.entity_name}-${index}`} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs font-semibold text-slate-400">#{index + 1}</span>
-                          <span className="rounded-full bg-[#4d789b] px-3 py-1 text-sm font-bold text-white">
-                            {Math.round(match.final_score)}%
-                          </span>
-                        </div>
-                        <p className="mt-3 truncate text-sm font-semibold text-slate-800">{match.entity_name}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </button>
-
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => openPanel(dashboardPanels[1])}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") openPanel(dashboardPanels[1]);
-                }}
-                className="rounded-[28px] border border-white bg-gradient-to-br from-[#4d789b] to-[#315b7d] p-6 text-left text-white shadow-xl shadow-[#4d789b]/20 transition hover:-translate-y-0.5 hover:shadow-2xl"
-              >
-                <p className="text-sm uppercase tracking-[0.2em] text-blue-50/80">Pitch deck status</p>
-                <div className="mt-5 flex items-end gap-3">
-                  <span className="deck-score-glow rounded-[24px] bg-white px-6 py-4 text-6xl font-black text-[#315b7d]">
-                    {deckBoost}%
-                  </span>
-                  <span className="pb-3 text-sm font-medium text-blue-50/90">
-                    matching lift
-                  </span>
-                </div>
-                <h2 className="mt-6 text-2xl font-semibold">
-                  {formData.pitchDeck ? "Pitch deck uploaded" : "Upload your pitch deck"}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-blue-50/80">
-                  {formData.pitchDeck ? formData.pitchDeck.name : "PDF only. The deck signal is highlighted because it improves investor ranking quality."}
+                <p className="mt-2 text-base text-slate-500">
+                  Here&apos;s your fundraising intelligence overview.
                 </p>
-                <label onClick={(e) => e.stopPropagation()} className="mt-5 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/30 bg-white/15 px-4 py-3 text-sm font-semibold backdrop-blur transition hover:bg-white/25">
-                  <Upload size={18} />
-                  Upload PDF
-                  <input type="file" accept="application/pdf,.pdf" onChange={handlePitchDeckChange} className="hidden" />
-                </label>
-                {deckError && <p className="mt-3 text-sm font-semibold text-rose-100">{deckError}</p>}
               </div>
-            </div>
+              <label className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700">
+                <Upload size={17} />
+                Upload New Deck
+                <input type="file" accept="application/pdf,.pdf" onChange={handlePitchDeckChange} className="hidden" />
+              </label>
+            </header>
 
-            <div className="mt-5 grid gap-5 md:grid-cols-3">
-              {[...dashboardPanels.slice(2), {
-                id: "profile",
-                title: "Profile Table",
-                subtitle: "Review the submitted founder and startup fields.",
-                icon: <TableProperties size={20} />,
-              }].map((panel) => (
-                <button
-                  key={panel.id}
-                  type="button"
-                  onClick={() => openPanel(panel)}
-                  className="rounded-[24px] border border-white bg-white p-5 text-left shadow-lg shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-[#b8cfe1]"
-                >
-                  <div className="mb-5 inline-flex rounded-2xl bg-[#e8f1f7] p-3 text-[#4d789b]">
-                    {panel.icon}
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-950">{panel.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">{panel.subtitle}</p>
-                  <p className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#4d789b]">
-                    Open workspace <ArrowRight size={16} />
-                  </p>
-                </button>
+            <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {kpiCards.map((card) => (
+                <KPICard key={card.label} {...card} />
               ))}
-            </div>
+            </section>
 
-            {activePanel && (
-              <div className="fixed inset-0 z-50 bg-slate-950/35 p-4 backdrop-blur-sm">
-                <div className="ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
-                  <div className="flex items-center justify-between border-b border-slate-100 p-5">
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="space-y-6">
+                <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-sm uppercase tracking-[0.18em] text-[#4d789b]">{activePanel.id}</p>
-                      <h2 className="mt-1 text-2xl font-semibold text-slate-950">{activePanel.title}</h2>
+                      <h2 className="text-lg font-semibold text-slate-950">Top 3 Recommended Investors</h2>
+                      <p className="mt-1 text-sm text-slate-500">Prioritized by fit, relationship quality, and thesis overlap.</p>
                     </div>
-                    <button type="button" onClick={() => setActivePanel(null)} className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200">
-                      <X size={20} />
+                    <button
+                      type="button"
+                      onClick={() => openPanel(dashboardPanels[0])}
+                      className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-800"
+                    >
+                      View all 15 matches <ArrowRight size={15} />
                     </button>
                   </div>
 
-                  {activePanel.id === "profile" ? (
-                    <div className="overflow-auto p-5">
-                      <div className="mb-4 flex items-center gap-2 text-[#4d789b]">
-                        <TableProperties size={20} />
-                        <span className="font-semibold">Submitted form table</span>
-                      </div>
-                      <table className="w-full overflow-hidden rounded-2xl text-left text-sm">
-                        <tbody className="divide-y divide-slate-100">
-                          {[
-                            ["Name", formData.name],
-                            ["Current Role", formData.currentRole || "-"],
-                            ["Email", formData.email || "-"],
-                            ["LinkedIn URL", formData.linkedinUrl],
-                            ["Startup Name", formData.startupName],
-                            ["Website URL", formData.websiteUrl || "-"],
-                            ["Stage", formData.stage],
-                            ["Industry", formData.industry.join(", ")],
-                            ["Business Model", formData.businessModel.join(", ")],
-                            ["Fundraising Preferences", formData.fundraisingPreference],
-                            ["Pitch Deck", formData.pitchDeck?.name || "Not uploaded"],
-                          ].map(([label, value]) => (
-                            <tr key={label}>
-                              <th className="w-44 bg-slate-50 px-4 py-3 font-semibold text-slate-600">{label}</th>
-                              <td className="px-4 py-3 text-slate-900">{value}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex-1 space-y-4 overflow-auto bg-slate-50 p-5">
-                        {chatMessages.map((message, index) => (
-                          <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                            <div className={`max-w-[82%] rounded-3xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "bg-[#4d789b] text-white" : "bg-white text-slate-700 shadow-sm"}`}>
-                              {message.text}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="border-t border-slate-100 p-4">
-                        <label className="mb-3 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 hover:border-[#4d789b] hover:text-[#4d789b]">
-                          <Upload size={17} />
-                          Upload client information
-                          <input type="file" accept=".pdf,.txt,.csv,.doc,.docx" onChange={handleClientFile} className="hidden" />
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleChatSend();
-                            }}
-                            placeholder="Message this section..."
-                            className="min-h-12 flex-1 rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-[#4d789b] focus:ring-2 focus:ring-[#dbeaf4]"
-                          />
-                          <button type="button" onClick={handleChatSend} className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#4d789b] text-white hover:bg-[#345f82]">
-                            <Send size={18} />
-                          </button>
+                  <div className="grid gap-4 2xl:grid-cols-3">
+                    {recommendedInvestors.map((investor, index) => (
+                      <InvestorCard
+                        key={investor.name}
+                        investor={investor}
+                        rank={index + 1}
+                        onViewDetails={() => openPanel({ id: "investor", title: investor.name, investor })}
+                      />
+                    ))}
+                  </div>
+                </section>
+
+                <section className="grid gap-4 lg:grid-cols-3">
+                  <AnalyticsCard title="Matching Overview" icon={<PieChart size={18} />}>
+                    <div className="flex items-center gap-5">
+                      <div className="relative h-28 w-28 shrink-0 rounded-full bg-[conic-gradient(#2563eb_0_62%,#22c55e_62%_84%,#e2e8f0_84%_100%)]">
+                        <div className="absolute inset-4 flex items-center justify-center rounded-full bg-white">
+                          <span className="text-2xl font-semibold text-slate-950">74%</span>
                         </div>
                       </div>
-                    </>
-                  )}
-                </div>
+                      <div className="space-y-3 text-sm">
+                        <LegendDot color="bg-blue-600" label="Excellent / Strong" value="62%" />
+                        <LegendDot color="bg-emerald-500" label="Good" value="22%" />
+                        <LegendDot color="bg-slate-300" label="Needs review" value="16%" />
+                      </div>
+                    </div>
+                  </AnalyticsCard>
+
+                  <AnalyticsCard title="Top Sectors" icon={<BarChart3 size={18} />}>
+                    <div className="space-y-4">
+                      {sectorBars.map((sector) => (
+                        <HorizontalMetric key={sector.label} {...sector} />
+                      ))}
+                    </div>
+                  </AnalyticsCard>
+
+                  <AnalyticsCard title="Network Strength" icon={<Network size={18} />}>
+                    <div className="space-y-4">
+                      {networkBars.map((bar) => (
+                        <HorizontalMetric key={bar.label} {...bar} />
+                      ))}
+                    </div>
+                  </AnalyticsCard>
+                </section>
+
+                <AIInsightBanner />
               </div>
-            )}
-          </div>
+
+              <aside className="space-y-4 xl:sticky xl:top-8 xl:self-start">
+                <PitchDeckStatus
+                  deckBoost={deckBoost}
+                  pitchDeck={formData.pitchDeck}
+                  deckError={deckError}
+                  onPitchDeckChange={handlePitchDeckChange}
+                />
+                <RecentActivity items={recentActivities} />
+              </aside>
+            </div>
+          </main>
+
+          {activePanel && (
+            <DashboardDrawer
+              activePanel={activePanel}
+              formData={formData}
+              matches={displayedMatches}
+              matchingLoading={matchingLoading}
+              matchingSource={matchingSource}
+              chatMessages={chatMessages}
+              chatInput={chatInput}
+              setChatInput={setChatInput}
+              handleChatSend={handleChatSend}
+              handleClientFile={handleClientFile}
+              onClose={() => setActivePanel(null)}
+            />
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function Sidebar({ userName, onLogout, onProfileClick, onMatchesClick, onPanelClick, panels }) {
+  const navItems = [
+    { label: "Dashboard", icon: <Home size={18} />, action: () => window.scrollTo({ top: 0, behavior: "smooth" }) },
+    { label: "Matches", icon: <Target size={18} />, action: onMatchesClick },
+    { label: "Investors", icon: <Building2 size={18} />, action: () => onPanelClick({ id: "investors", title: "Investors", subtitle: "Investor workspace." }) },
+    { label: "Network", icon: <Network size={18} />, action: () => onPanelClick(panels[2]) },
+    { label: "Outreach", icon: <Send size={18} />, action: () => onPanelClick({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." }) },
+    { label: "Reports", icon: <FileText size={18} />, action: () => onPanelClick({ id: "reports", title: "Reports", subtitle: "Fundraising reports workspace." }) },
+    { label: "Settings", icon: <Settings size={18} />, action: () => onPanelClick({ id: "settings", title: "Settings", subtitle: "Account and dashboard preferences." }) },
+  ];
+
+  return (
+    <>
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col bg-[#07182f] px-4 py-5 text-white lg:flex">
+        <div className="mb-8 flex items-center gap-3 px-2">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-600 text-sm font-black tracking-wide">
+            AMG
+          </div>
+          <div>
+            <p className="text-sm font-semibold leading-5">AMG Venture Groups</p>
+            <p className="text-xs text-slate-400">Investor intelligence</p>
+          </div>
+        </div>
+
+        <nav className="space-y-1">
+          {navItems.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={item.action}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${
+                item.label === "Dashboard"
+                  ? "bg-white/10 text-white shadow-sm"
+                  : "text-slate-300 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="mt-auto rounded-lg border border-white/10 bg-white/10 p-3">
+          <button type="button" onClick={onProfileClick} className="flex w-full items-center gap-3 text-left">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-sm font-bold text-[#07182f]">
+              {userName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{userName}</p>
+              <p className="text-xs text-slate-400">Founder account</p>
+            </div>
+          </button>
+          <button type="button" onClick={onLogout} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white">
+            <LogOut size={14} />
+            Log out
+          </button>
+        </div>
+      </aside>
+
+      <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#07182f] text-xs font-black text-white">
+              AMG
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-950">AMG Venture Groups</p>
+              <p className="text-xs text-slate-500">Dashboard</p>
+            </div>
+          </div>
+          <button type="button" onClick={onMatchesClick} className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
+            Matches
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function KPICard({ label, value, detail, icon }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div className="rounded-lg bg-blue-50 p-2 text-blue-700">{icon}</div>
+        <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500">Live</span>
+      </div>
+      <p className="mt-5 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-700">{label}</p>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p>
+    </div>
+  );
+}
+
+function InvestorCard({ investor, rank, onViewDetails }) {
+  return (
+    <article className="flex min-h-full flex-col rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#07182f] text-xs font-bold text-white">
+            #{rank}
+          </span>
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-black text-blue-700">
+            {investor.initials}
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-950">{investor.name}</h3>
+            <p className="text-xs font-semibold text-emerald-700">{investor.label}</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-semibold text-blue-700">{investor.score}%</p>
+          <p className="text-xs text-slate-500">match</p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {["Fintech", "Canada", "Pre-seed / Seed"].map((tag) => (
+          <span key={tag} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+            {tag}
+          </span>
+        ))}
+      </div>
+
+      <div className="mt-5">
+        <p className="text-xs font-semibold uppercase text-slate-500">Why matched</p>
+        <ul className="mt-3 space-y-2">
+          {investor.bullets.map((bullet) => (
+            <li key={bullet} className="flex gap-2 text-sm leading-5 text-slate-600">
+              <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-500" size={15} />
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
+        <p className="text-xs font-semibold uppercase text-slate-500">Warm Intro Path</p>
+        <p className="mt-2 text-sm leading-5 text-slate-700">{investor.introPath}</p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onViewDetails}
+        className="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg bg-[#07182f] px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
+      >
+        View Details
+      </button>
+    </article>
+  );
+}
+
+function PitchDeckStatus({ deckBoost, pitchDeck, deckError, onPitchDeckChange }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-[#07182f] p-5 text-white shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-blue-100">Pitch Deck Status</p>
+          <p className="mt-1 text-xs text-slate-400">{pitchDeck ? pitchDeck.name : "No active PDF uploaded"}</p>
+        </div>
+        <div className="rounded-lg bg-white/10 p-2 text-blue-100">
+          <FileText size={19} />
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <p className="text-5xl font-semibold tracking-tight">{deckBoost}%</p>
+        <p className="mt-1 text-sm font-semibold text-blue-100">matching lift</p>
+      </div>
+
+      <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/15">
+        <div className="h-full rounded-full bg-blue-500 transition-all duration-500" style={{ width: `${Math.min(deckBoost, 100)}%` }} />
+      </div>
+
+      <p className="mt-4 text-sm leading-6 text-slate-300">
+        Upload your pitch deck to improve investor ranking quality.
+      </p>
+
+      <label className="mt-5 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-[#07182f] transition hover:bg-blue-50">
+        <Upload size={17} />
+        Upload PDF
+        <input type="file" accept="application/pdf,.pdf" onChange={onPitchDeckChange} className="hidden" />
+      </label>
+      {deckError && <p className="mt-3 text-sm font-semibold text-rose-200">{deckError}</p>}
+    </section>
+  );
+}
+
+function RecentActivity({ items }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-slate-950">Recent Activity</h2>
+        <Activity size={18} className="text-blue-700" />
+      </div>
+      <div className="space-y-4">
+        {items.map((item, index) => (
+          <div key={item} className="flex gap-3">
+            <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-700">
+              {index + 1}
+            </div>
+            <p className="text-sm leading-5 text-slate-600">{item}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AnalyticsCard({ title, icon, children }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-slate-950">{title}</h2>
+        <div className="rounded-lg bg-blue-50 p-2 text-blue-700">{icon}</div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function AIInsightBanner() {
+  return (
+    <section className="flex flex-col gap-4 rounded-lg border border-blue-100 bg-blue-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+          <Sparkles size={18} />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-blue-700">AI Insight</p>
+          <p className="mt-1 text-lg font-semibold text-slate-950">
+            Your strongest advantage is Toronto-based fintech network overlap.
+          </p>
+        </div>
+      </div>
+      <button type="button" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-blue-700 ring-1 ring-blue-100 hover:bg-blue-100">
+        View Full Insight <ArrowRight size={15} />
+      </button>
+    </section>
+  );
+}
+
+function HorizontalMetric({ label, value, color = "bg-blue-600" }) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+        <span className="font-medium text-slate-600">{label}</span>
+        <span className="font-semibold text-slate-950">{value}%</span>
+      </div>
+      <div className="h-2 rounded-full bg-slate-100">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${value}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function LegendDot({ color, label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="inline-flex items-center gap-2 text-slate-600">
+        <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+        {label}
+      </span>
+      <span className="font-semibold text-slate-950">{value}</span>
+    </div>
+  );
+}
+
+function DashboardDrawer({
+  activePanel,
+  formData,
+  matches,
+  matchingLoading,
+  matchingSource,
+  chatMessages,
+  chatInput,
+  setChatInput,
+  handleChatSend,
+  handleClientFile,
+  onClose,
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/35 p-4 backdrop-blur-sm">
+      <div className="ml-auto flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 p-5">
+          <div>
+            <p className="text-xs font-semibold uppercase text-blue-700">{activePanel.id}</p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-950">{activePanel.title}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200">
+            <X size={20} />
+          </button>
+        </div>
+
+        {activePanel.id === "profile" ? (
+          <ProfileTable formData={formData} />
+        ) : activePanel.id === "matching" ? (
+          <MatchesPanel matches={matches} matchingLoading={matchingLoading} matchingSource={matchingSource} />
+        ) : activePanel.id === "investor" ? (
+          <InvestorDetailPanel investor={activePanel.investor} />
+        ) : (
+          <ChatWorkspace
+            chatMessages={chatMessages}
+            chatInput={chatInput}
+            setChatInput={setChatInput}
+            handleChatSend={handleChatSend}
+            handleClientFile={handleClientFile}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProfileTable({ formData }) {
+  return (
+    <div className="overflow-auto p-5">
+      <div className="mb-4 flex items-center gap-2 text-blue-700">
+        <TableProperties size={20} />
+        <span className="font-semibold">Submitted form table</span>
+      </div>
+      <table className="w-full overflow-hidden rounded-lg text-left text-sm">
+        <tbody className="divide-y divide-slate-100">
+          {[
+            ["Name", formData.name || "Zhixin Yu"],
+            ["Current Role", formData.currentRole || "-"],
+            ["Email", formData.email || "-"],
+            ["LinkedIn URL", formData.linkedinUrl || "-"],
+            ["Startup Name", formData.startupName || "-"],
+            ["Website URL", formData.websiteUrl || "-"],
+            ["Stage", formData.stage || "-"],
+            ["Industry", formData.industry.join(", ") || "-"],
+            ["Business Model", formData.businessModel.join(", ") || "-"],
+            ["Fundraising Preferences", formData.fundraisingPreference || "-"],
+            ["Pitch Deck", formData.pitchDeck?.name || "Not uploaded"],
+          ].map(([label, value]) => (
+            <tr key={label}>
+              <th className="w-48 bg-slate-50 px-4 py-3 font-semibold text-slate-600">{label}</th>
+              <td className="px-4 py-3 text-slate-900">{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MatchesPanel({ matches, matchingLoading, matchingSource }) {
+  return (
+    <div className="flex-1 overflow-auto bg-slate-50 p-5">
+      <div className="mb-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-950">Full Top 15 Matches</p>
+          <p className="mt-1 text-sm text-slate-500">Complete shortlist kept outside the dashboard homepage.</p>
+        </div>
+        <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
+          {matchingLoading ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
+          {matchingLoading ? "Loading" : matchingSource === "backend" ? "Live results" : "Demo results"}
+        </span>
+      </div>
+
+      {matchingLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5, 6].map((item) => (
+            <div key={item} className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-4">
+              <div className="loading-sweep absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-slate-50 to-transparent" />
+              <div className="h-4 w-2/3 rounded-full bg-slate-200" />
+              <div className="mt-3 h-3 w-1/4 rounded-full bg-slate-200" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          {matches.slice(0, 15).map((match, index) => {
+            const score = Math.round(match.final_score || 0);
+            const label = score >= 94 ? "Excellent Match" : score >= 85 ? "Strong Match" : score >= 75 ? "Good Match" : "Watchlist";
+            return (
+              <div key={`${match.entity_name}-${index}`} className="grid gap-3 border-b border-slate-100 p-4 last:border-0 sm:grid-cols-[44px_minmax(0,1fr)_150px] sm:items-center">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">#{index + 1}</span>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-slate-950">{match.entity_name}</p>
+                  <p className="mt-1 text-sm text-slate-500">Fintech / Canada / Pre-seed / Seed</p>
+                </div>
+                <div className="sm:text-right">
+                  <p className="font-semibold text-blue-700">{score}%</p>
+                  <p className="text-xs font-semibold text-slate-500">{label}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InvestorDetailPanel({ investor }) {
+  if (!investor) return null;
+
+  return (
+    <div className="flex-1 overflow-auto bg-slate-50 p-5">
+      <div className="rounded-lg border border-slate-200 bg-white p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-blue-50 text-sm font-black text-blue-700">
+              {investor.initials}
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold text-slate-950">{investor.name}</h3>
+              <p className="text-sm font-semibold text-emerald-700">{investor.label}</p>
+            </div>
+          </div>
+          <div className="rounded-lg bg-blue-50 px-4 py-3 text-blue-700">
+            <p className="text-3xl font-semibold">{investor.score}%</p>
+            <p className="text-xs font-semibold">match score</p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          {["Fintech", "Canada", "Pre-seed / Seed"].map((tag) => (
+            <span key={tag} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+              {tag}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_.9fr]">
+          <div>
+            <p className="text-sm font-semibold text-slate-950">Why matched</p>
+            <ul className="mt-3 space-y-3">
+              {investor.bullets.map((bullet) => (
+                <li key={bullet} className="flex gap-2 text-sm leading-6 text-slate-600">
+                  <CheckCircle2 className="mt-1 shrink-0 text-emerald-500" size={16} />
+                  <span>{bullet}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-950">Warm Intro Path</p>
+            <p className="mt-3 text-sm leading-6 text-slate-600">{investor.introPath}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatWorkspace({ chatMessages, chatInput, setChatInput, handleChatSend, handleClientFile }) {
+  return (
+    <>
+      <div className="flex-1 space-y-4 overflow-auto bg-slate-50 p-5">
+        {chatMessages.map((message, index) => (
+          <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[82%] rounded-lg px-4 py-3 text-sm leading-6 ${message.role === "user" ? "bg-blue-600 text-white" : "bg-white text-slate-700 shadow-sm"}`}>
+              {message.text}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-slate-100 p-4">
+        <label className="mb-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 hover:border-blue-600 hover:text-blue-700">
+          <Upload size={17} />
+          Upload client information
+          <input type="file" accept=".pdf,.txt,.csv,.doc,.docx" onChange={handleClientFile} className="hidden" />
+        </label>
+        <div className="flex gap-2">
+          <input
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleChatSend();
+            }}
+            placeholder="Message this section..."
+            className="min-h-12 flex-1 rounded-lg border border-slate-200 px-4 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+          />
+          <button type="button" onClick={handleChatSend} className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+            <Send size={18} />
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
