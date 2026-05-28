@@ -127,6 +127,121 @@ const networkBars = [
   { label: "Weak", value: 10, color: "bg-slate-300" },
 ];
 
+const hasValue = (value) => value !== undefined && value !== null && value !== "";
+
+const toArray = (value) => {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+};
+
+const slugifyId = (value, fallback) =>
+  String(value || fallback)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "") || fallback;
+
+const normalizePathNode = (node, index, total) => {
+  if (!node) return null;
+
+  if (typeof node === "string") {
+    return {
+      id: slugifyId(`${node}-${index}`, `node-${index}`),
+      label: node,
+      type: index === 0 ? "founder" : index === total - 1 ? "investor" : "person",
+    };
+  }
+
+  const label = node.label || node.name || node.title;
+  if (!label) return null;
+
+  return {
+    id: node.id || slugifyId(`${label}-${index}`, `node-${index}`),
+    label,
+    type: node.type || (index === 0 ? "founder" : index === total - 1 ? "investor" : "unknown"),
+    subtitle: node.subtitle || node.role || node.description,
+  };
+};
+
+const normalizeRelationshipEntry = (entry, fallbackMatch = {}) => {
+  if (!entry) return null;
+  const sourcePath = entry.bestPath || entry.best_path || entry.path || entry.nodes || [];
+  const bestPath = toArray(sourcePath)
+    .map((node, index, nodes) => normalizePathNode(node, index, nodes.length))
+    .filter(Boolean);
+
+  if (!bestPath.length && !toArray(entry.edges).length) return null;
+
+  const investorName =
+    entry.investorName ||
+    entry.investor_name ||
+    entry.entity_name ||
+    fallbackMatch.entity_name ||
+    bestPath[bestPath.length - 1]?.label;
+
+  const relationshipScore = hasValue(entry.relationshipScore)
+    ? entry.relationshipScore
+    : entry.relationship_score;
+
+  return {
+    investorName,
+    matchScore: hasValue(entry.matchScore)
+      ? entry.matchScore
+      : hasValue(entry.match_score)
+        ? entry.match_score
+        : fallbackMatch.final_score,
+    relationshipScore,
+    confidence: entry.confidence,
+    bestPath,
+    edges: toArray(entry.edges),
+    evidence: toArray(entry.evidence).filter(Boolean),
+  };
+};
+
+const normalizeRelationshipIntelligence = (payload, matches = []) => {
+  const direct =
+    payload?.relationshipIntelligence ||
+    payload?.relationship_intelligence ||
+    payload?.relationshipInsights ||
+    payload?.relationship_insights ||
+    payload?.relationship_results;
+
+  const rawDirectEntries = Array.isArray(direct) ? direct : direct?.results || (direct ? [direct] : []);
+  const directEntries = rawDirectEntries.flatMap((entry) => {
+    const paths = toArray(entry.paths || entry.relationshipPaths || entry.relationship_paths);
+    if (!paths.length) return [entry];
+    return paths.map((path) => ({
+      ...path,
+      investorName: entry.investorName || entry.investor_name || entry.entity_name,
+      matchScore: entry.matchScore || entry.match_score || entry.final_score,
+    }));
+  });
+  const matchEntries = matches.flatMap((match) => {
+    const relationshipData =
+      match.relationshipIntelligence ||
+      match.relationship_intelligence ||
+      match.relationshipInsights ||
+      match.relationship_insights;
+    const relationshipEntries = Array.isArray(relationshipData)
+      ? relationshipData
+      : relationshipData?.results || (relationshipData ? [relationshipData] : []);
+
+    const pathEntries = toArray(match.paths || match.relationshipPaths || match.relationship_paths).map((path) => ({
+      ...path,
+      investorName: match.entity_name,
+      matchScore: match.final_score,
+    }));
+
+    return [...relationshipEntries, ...pathEntries].map((entry) => [entry, match]);
+  });
+
+  return [
+    ...directEntries.map((entry) => [entry, matches.find((match) => match.entity_name === (entry.investorName || entry.investor_name))]),
+    ...matchEntries,
+  ]
+    .map(([entry, match]) => normalizeRelationshipEntry(entry, match))
+    .filter(Boolean);
+};
+
 export default function FounderIntakeForm() {
   const [page, setPage] = useState(getInitialPage);
   const [formData, setFormData] = useState({
@@ -149,6 +264,8 @@ export default function FounderIntakeForm() {
   const [matches, setMatches] = useState([]);
   const [matchingLoading, setMatchingLoading] = useState(false);
   const [matchingSource, setMatchingSource] = useState("demo");
+  const [relationshipInsights, setRelationshipInsights] = useState([]);
+  const [selectedRelationshipIndex, setSelectedRelationshipIndex] = useState(0);
   const [deckBoost, setDeckBoost] = useState(0);
   const [deckError, setDeckError] = useState("");
   const [activePanel, setActivePanel] = useState(null);
@@ -157,7 +274,7 @@ export default function FounderIntakeForm() {
   const [chatMessages, setChatMessages] = useState([
     {
       role: "assistant",
-      text: "Upload client information or paste notes here. I will keep the context attached to this dashboard section.",
+      text: "Upload a founder and startup profile or paste notes here. I will keep the context attached to this dashboard section.",
     },
   ]);
 
@@ -246,6 +363,8 @@ export default function FounderIntakeForm() {
     const loadMatches = async () => {
       setMatchingLoading(true);
       setMatches([]);
+      setRelationshipInsights([]);
+      setSelectedRelationshipIndex(0);
 
       const startedAt = Date.now();
 
@@ -287,13 +406,18 @@ export default function FounderIntakeForm() {
               investor_id: investor.investor_id || index + 1,
               entity_name: investor.entity_name || `Investor ${index + 1}`,
               final_score: investor.final_score || investor.final_score_scaled || 0,
+              relationshipIntelligence: investor.relationshipIntelligence || investor.relationship_intelligence,
+              relationshipPaths: investor.relationshipPaths || investor.relationship_paths || investor.paths,
             }))
           : demoMatches;
+        const normalizedRelationships = normalizeRelationshipIntelligence(matchData, normalizedMatches);
 
         const remainingDelay = Math.max(0, 1400 - (Date.now() - startedAt));
         window.setTimeout(() => {
           if (cancelled) return;
           setMatches(normalizedMatches);
+          setRelationshipInsights(normalizedRelationships);
+          setSelectedRelationshipIndex(0);
           setMatchingSource(topInvestors.length ? "backend" : "demo");
           setMatchingLoading(false);
         }, remainingDelay);
@@ -302,6 +426,8 @@ export default function FounderIntakeForm() {
         window.setTimeout(() => {
           if (cancelled) return;
           setMatches(demoMatches);
+          setRelationshipInsights([]);
+          setSelectedRelationshipIndex(0);
           setMatchingSource("demo");
           setMatchingLoading(false);
         }, remainingDelay);
@@ -346,7 +472,7 @@ export default function FounderIntakeForm() {
     setChatMessages([
       {
         role: "assistant",
-        text: `This chat is attached to ${panel.title}. Upload client information or add notes for this section.`,
+        text: `This chat is attached to ${panel.title}. Upload a founder and startup profile or add notes for this section.`,
       },
     ]);
   };
@@ -370,7 +496,7 @@ export default function FounderIntakeForm() {
 
     setChatMessages((prev) => [
       ...prev,
-      { role: "user", text: `Uploaded client file: ${file.name}` },
+      { role: "user", text: `Uploaded founder profile file: ${file.name}` },
       { role: "assistant", text: "File received. Add any notes you want attached to this section." },
     ]);
     e.target.value = "";
@@ -919,6 +1045,11 @@ export default function FounderIntakeForm() {
               matches={displayedMatches}
               matchingLoading={matchingLoading}
               matchingSource={matchingSource}
+              relationshipInsights={relationshipInsights}
+              selectedRelationshipIndex={selectedRelationshipIndex}
+              setSelectedRelationshipIndex={setSelectedRelationshipIndex}
+              onPitchDeckChange={handlePitchDeckChange}
+              deckError={deckError}
               chatMessages={chatMessages}
               chatInput={chatInput}
               setChatInput={setChatInput}
@@ -1220,6 +1351,11 @@ function DashboardDrawer({
   matches,
   matchingLoading,
   matchingSource,
+  relationshipInsights,
+  selectedRelationshipIndex,
+  setSelectedRelationshipIndex,
+  onPitchDeckChange,
+  deckError,
   chatMessages,
   chatInput,
   setChatInput,
@@ -1246,6 +1382,15 @@ function DashboardDrawer({
           <MatchesPanel matches={matches} matchingLoading={matchingLoading} matchingSource={matchingSource} />
         ) : activePanel.id === "investor" ? (
           <InvestorDetailPanel investor={activePanel.investor} />
+        ) : activePanel.id === "relationship" ? (
+          <RelationshipIntelligencePanel
+            pitchDeck={formData.pitchDeck}
+            relationshipInsights={relationshipInsights}
+            selectedRelationshipIndex={selectedRelationshipIndex}
+            setSelectedRelationshipIndex={setSelectedRelationshipIndex}
+            onPitchDeckChange={onPitchDeckChange}
+            deckError={deckError}
+          />
         ) : (
           <ChatWorkspace
             chatMessages={chatMessages}
@@ -1437,6 +1582,273 @@ function InvestorDetailPanel({ investor }) {
   );
 }
 
+function getRelationshipNodeStyles(type) {
+  const styles = {
+    founder: "border-blue-300 bg-blue-50 text-blue-800",
+    person: "border-sky-200 bg-white text-slate-800",
+    organization: "border-blue-100 bg-slate-50 text-slate-800",
+    investor: "border-blue-600 bg-blue-600 text-white",
+    portfolio: "border-slate-200 bg-white text-slate-700",
+    unknown: "border-slate-200 bg-white text-slate-700",
+  };
+
+  return styles[type] || styles.unknown;
+}
+
+function getRelationshipNodeIcon(type) {
+  if (type === "organization" || type === "investor" || type === "portfolio") return <Building2 size={18} />;
+  if (type === "founder" || type === "person") return <User size={18} />;
+  return <Network size={18} />;
+}
+
+function getConsecutiveEdge(edges, sourceNode, targetNode) {
+  return edges.find((edge) => {
+    const source = edge.source || edge.from;
+    const target = edge.target || edge.to;
+    return (
+      (source === sourceNode.id || source === sourceNode.label) &&
+      (target === targetNode.id || target === targetNode.label)
+    );
+  });
+}
+
+function getEdgeLabel(edge) {
+  return edge?.relationshipType || edge?.relationship_type || edge?.rel_type || "";
+}
+
+function formatRelationshipScore(value) {
+  if (!hasValue(value)) return "";
+  return typeof value === "number" ? `${Math.round(value)}%` : value;
+}
+
+function RelationshipIntelligencePanel({
+  pitchDeck,
+  relationshipInsights,
+  selectedRelationshipIndex,
+  setSelectedRelationshipIndex,
+  onPitchDeckChange,
+  deckError,
+}) {
+  const locked = !pitchDeck;
+  const hasRelationshipData = relationshipInsights.length > 0;
+  const safeIndex = Math.min(selectedRelationshipIndex, Math.max(relationshipInsights.length - 1, 0));
+  const selectedInsight = relationshipInsights[safeIndex];
+
+  return (
+    <div className="flex-1 overflow-auto bg-slate-50 p-5">
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase text-blue-700">Relationship Intelligence</p>
+            <h3 className="mt-1 text-xl font-semibold text-slate-950">Founder & Startup Profile</h3>
+            <p className="mt-1 text-sm text-slate-500">Relationship paths unlock after a pitch deck is uploaded.</p>
+          </div>
+          <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
+            <Upload size={16} />
+            Upload Pitch Deck
+            <input type="file" accept="application/pdf,.pdf" onChange={onPitchDeckChange} className="hidden" />
+          </label>
+        </div>
+        {deckError && <p className="mt-3 text-sm font-semibold text-rose-600">{deckError}</p>}
+
+        <div className="relative mt-5">
+          <div className={locked ? "pointer-events-none select-none blur-[3px]" : ""}>
+            {hasRelationshipData ? (
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+                <RelationshipGraph insight={selectedInsight} />
+                <RelationshipSummaryPanel
+                  insights={relationshipInsights}
+                  selectedIndex={safeIndex}
+                  selectedInsight={selectedInsight}
+                  onSelect={setSelectedRelationshipIndex}
+                />
+              </div>
+            ) : (
+              <EmptyRelationshipState />
+            )}
+          </div>
+
+          {locked && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/75 px-4 backdrop-blur-[1px]">
+              <div className="max-w-sm rounded-lg border border-blue-100 bg-white p-5 text-center shadow-sm">
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                  <FileText size={20} />
+                </div>
+                <p className="mt-3 text-sm font-semibold text-slate-950">
+                  Upload your pitch deck to unlock relationship intelligence insights.
+                </p>
+                <label className="mt-4 inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
+                  <Upload size={16} />
+                  Upload Pitch Deck
+                  <input type="file" accept="application/pdf,.pdf" onChange={onPitchDeckChange} className="hidden" />
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RelationshipGraph({ insight }) {
+  const nodes = insight?.bestPath || [];
+  const edges = insight?.edges || [];
+
+  if (!nodes.length) return <EmptyRelationshipState compact />;
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-950">Network Visualization</p>
+          <p className="mt-1 text-xs text-slate-500">Best path rendered from relationship data.</p>
+        </div>
+        <Network size={18} className="text-blue-700" />
+      </div>
+
+      <div className="min-h-[330px] overflow-x-auto rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex min-w-max items-center py-16">
+          {nodes.map((node, index) => {
+            const nextNode = nodes[index + 1];
+            const edge = nextNode ? getConsecutiveEdge(edges, node, nextNode) : null;
+            const edgeLabel = getEdgeLabel(edge);
+
+            return (
+              <React.Fragment key={node.id}>
+                <div className={`flex w-36 shrink-0 flex-col items-center rounded-lg border p-3 text-center shadow-sm ${getRelationshipNodeStyles(node.type)}`}>
+                  <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-white/70 text-blue-700 ring-1 ring-black/5">
+                    {getRelationshipNodeIcon(node.type)}
+                  </div>
+                  <p className="w-full text-sm font-semibold leading-5">{node.label}</p>
+                  {node.subtitle && <p className="mt-1 w-full text-xs leading-4 opacity-70">{node.subtitle}</p>}
+                  {node.type && <p className="mt-2 text-[11px] font-semibold uppercase opacity-60">{node.type}</p>}
+                </div>
+
+                {nextNode && (
+                  <div className="relative flex w-24 shrink-0 items-center justify-center">
+                    <div className="h-px w-full bg-blue-300" />
+                    <ArrowRight className="absolute right-0 text-blue-500" size={16} />
+                    {edgeLabel && (
+                      <span className="absolute -top-7 max-w-24 truncate rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 ring-1 ring-blue-100">
+                        {edgeLabel}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RelationshipSummaryPanel({ insights, selectedIndex, selectedInsight, onSelect }) {
+  if (!selectedInsight) return <EmptyRelationshipState compact />;
+
+  return (
+    <aside className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-950">{selectedInsight.investorName || "Selected investor"}</p>
+          <p className="mt-1 text-xs text-slate-500">Selected path summary</p>
+        </div>
+        {hasValue(selectedInsight.matchScore) && (
+          <span className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
+            {formatRelationshipScore(selectedInsight.matchScore)}
+          </span>
+        )}
+      </div>
+
+      {insights.length > 1 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {insights.map((insight, index) => (
+            <button
+              key={`${insight.investorName || "investor"}-${index}`}
+              type="button"
+              onClick={() => onSelect(index)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
+                selectedIndex === index
+                  ? "bg-blue-600 text-white ring-blue-600"
+                  : "bg-blue-50 text-blue-700 ring-blue-100 hover:bg-blue-100"
+              }`}
+            >
+              {insight.investorName || `Path ${index + 1}`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-5 space-y-3 text-sm">
+        {hasValue(selectedInsight.relationshipScore) && (
+          <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase text-slate-500">Relationship Score</p>
+            <p className="mt-1 font-semibold text-slate-950">{formatRelationshipScore(selectedInsight.relationshipScore)}</p>
+          </div>
+        )}
+
+        {selectedInsight.confidence && (
+          <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase text-slate-500">Confidence</p>
+            <p className="mt-1 font-semibold text-slate-950">{selectedInsight.confidence}</p>
+          </div>
+        )}
+
+        {selectedInsight.bestPath?.length > 0 && (
+          <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase text-slate-500">Best Path</p>
+            <ol className="mt-2 space-y-2">
+              {selectedInsight.bestPath.map((node, index) => (
+                <li key={node.id} className="flex gap-2 text-slate-700">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+                    {index + 1}
+                  </span>
+                  <span>{node.label}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        {selectedInsight.evidence?.length > 0 && (
+          <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase text-slate-500">Evidence & Signals</p>
+            <ul className="mt-2 space-y-2">
+              {selectedInsight.evidence.map((evidence) => (
+                <li key={evidence} className="flex gap-2 leading-5 text-slate-600">
+                  <CheckCircle2 className="mt-0.5 shrink-0 text-blue-600" size={15} />
+                  <span>{evidence}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <button type="button" className="mt-5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#07182f] px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
+        <Send size={16} />
+        Suggested outreach
+      </button>
+    </aside>
+  );
+}
+
+function EmptyRelationshipState({ compact = false }) {
+  return (
+    <div className={`rounded-lg border border-dashed border-slate-300 bg-white p-5 text-center ${compact ? "" : "min-h-[280px] flex flex-col items-center justify-center"}`}>
+      <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+        <Network size={18} />
+      </div>
+      <p className="mt-3 text-sm font-semibold text-slate-950">No relationship path found yet.</p>
+      <p className="mt-1 text-sm leading-6 text-slate-500">
+        Try uploading LinkedIn connection data or adding founder network information.
+      </p>
+    </div>
+  );
+}
+
 function ChatWorkspace({ chatMessages, chatInput, setChatInput, handleChatSend, handleClientFile }) {
   return (
     <>
@@ -1452,7 +1864,7 @@ function ChatWorkspace({ chatMessages, chatInput, setChatInput, handleChatSend, 
       <div className="border-t border-slate-100 p-4">
         <label className="mb-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 hover:border-blue-600 hover:text-blue-700">
           <Upload size={17} />
-          Upload client information
+          Founder & Startup Profile
           <input type="file" accept=".pdf,.txt,.csv,.doc,.docx" onChange={handleClientFile} className="hidden" />
         </label>
         <div className="flex gap-2">
