@@ -1,8 +1,9 @@
 import os
+import re
 import tempfile
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -23,6 +24,7 @@ except ImportError:
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Latte Backend")
+ALLOWED_BROWSER_ORIGIN = re.compile(r"^https://.*\.vercel\.app$|^http://localhost:\d+$|^http://127\.0\.0\.1:\d+$")
 
 
 class RelationshipIntelligenceRequest(BaseModel):
@@ -43,6 +45,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_private_network_access_header(request, call_next):
+    origin = request.headers.get("origin", "")
+    is_private_network_preflight = (
+        request.method == "OPTIONS" and
+        request.headers.get("access-control-request-private-network") == "true" and
+        ALLOWED_BROWSER_ORIGIN.match(origin)
+    )
+    if is_private_network_preflight:
+        return Response(
+            content="OK",
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Allow-Methods": "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT",
+                "Access-Control-Allow-Headers": request.headers.get("access-control-request-headers", "*"),
+                "Access-Control-Allow-Private-Network": "true",
+                "Vary": "Origin",
+            },
+        )
+
+    response = await call_next(request)
+    if request.headers.get("access-control-request-private-network") == "true":
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
 
 
 @app.get("/")

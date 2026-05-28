@@ -33,6 +33,39 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const PAGE_STORAGE_KEY = "founderInvestorMatchPage";
 const VALID_PAGES = new Set(["landing", "form", "dashboard"]);
 
+const getApiBaseCandidates = () => {
+  const configured = import.meta.env.VITE_API_URL;
+  if (configured) return [configured.replace(/\/$/, "")];
+
+  const localBases = ["http://127.0.0.1:8000", "http://localhost:8000"];
+  if (typeof window === "undefined") return [API_BASE];
+
+  const currentHost = window.location.hostname;
+  if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+    return localBases;
+  }
+
+  return [API_BASE, ...localBases.filter((base) => base !== API_BASE)];
+};
+
+const fetchRelationshipApi = async (path, options) => {
+  const candidates = getApiBaseCandidates();
+  let lastError = null;
+
+  for (const base of candidates) {
+    try {
+      return await fetch(`${base}${path}`, options);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(
+    `Could not reach the backend at ${candidates.join(" or ")}. Start FastAPI with: uvicorn backend.main:app --host 127.0.0.1 --port 8000`,
+    { cause: lastError },
+  );
+};
+
 const getInitialPage = () => {
   if (typeof window === "undefined") return "landing";
   const savedPage = window.localStorage.getItem(PAGE_STORAGE_KEY);
@@ -593,7 +626,7 @@ export default function FounderIntakeForm() {
         connections_csv: connectionsCsv,
       };
 
-      const response = await fetch(`${API_BASE}/relationship-intelligence`, {
+      const response = await fetchRelationshipApi("/relationship-intelligence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
