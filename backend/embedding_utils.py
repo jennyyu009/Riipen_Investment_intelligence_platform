@@ -1,28 +1,65 @@
+import os
 import numpy as np
-from sentence_transformers import SentenceTransformer
+
+USE_LIGHTWEIGHT = os.getenv(
+    "LIGHTWEIGHT_DEPLOYMENT",
+    "false"
+).lower() == "true"
+
 _model = None
 
 
-def get_embedding_model():
-    global _model
+if not USE_LIGHTWEIGHT:
 
-    if _model is None:
-        _model = SentenceTransformer(
-            "BAAI/bge-small-en-v1.5"
+    from sentence_transformers import SentenceTransformer
+
+    def get_embedding_model():
+        global _model
+
+        if _model is None:
+            _model = SentenceTransformer(
+                "BAAI/bge-small-en-v1.5"
+            )
+
+        return _model
+
+    def cosine_similarity(
+        text_a: str,
+        text_b: str
+    ) -> float:
+
+        if not text_a or not text_b:
+            return 0.0
+
+        model = get_embedding_model()
+
+        embeddings = model.encode(
+            [text_a, text_b],
+            normalize_embeddings=True
         )
 
-    return _model
+        return float(
+            np.dot(
+                embeddings[0],
+                embeddings[1]
+            )
+        )
 
+else:
 
-def cosine_similarity(text_a: str, text_b: str) -> float:
-    if not text_a or not text_b:
-        return 0.0
+    from rapidfuzz import fuzz
 
-    model = get_embedding_model()
+    def cosine_similarity(
+        text_a: str,
+        text_b: str
+    ) -> float:
 
-    embeddings = model.encode(
-        [text_a, text_b],
-        normalize_embeddings=True
-    )
+        if not text_a or not text_b:
+            return 0.0
 
-    return float(np.dot(embeddings[0], embeddings[1]))
+        similarity = fuzz.token_sort_ratio(
+            text_a,
+            text_b
+        )
+
+        return similarity / 100
