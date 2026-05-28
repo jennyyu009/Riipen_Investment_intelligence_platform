@@ -39,6 +39,14 @@ const getInitialPage = () => {
   return VALID_PAGES.has(savedPage) ? savedPage : "landing";
 };
 
+const getTimeBasedGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Good Morning";
+  if (hour >= 12 && hour < 17) return "Good Afternoon";
+  if (hour >= 17 && hour < 21) return "Good Evening";
+  return "Good Night";
+};
+
 const demoMatches = [
   ["Deloitte Ventures", 98],
   ["OMERS Ventures", 98],
@@ -144,6 +152,7 @@ export default function FounderIntakeForm() {
   const [deckBoost, setDeckBoost] = useState(0);
   const [deckError, setDeckError] = useState("");
   const [activePanel, setActivePanel] = useState(null);
+  const [timeGreeting, setTimeGreeting] = useState(getTimeBasedGreeting);
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState([
     {
@@ -197,6 +206,14 @@ export default function FounderIntakeForm() {
   useEffect(() => {
     window.localStorage.setItem(PAGE_STORAGE_KEY, page);
   }, [page]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setTimeGreeting(getTimeBasedGreeting());
+    }, 60000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (page !== "dashboard") return undefined;
@@ -799,7 +816,7 @@ export default function FounderIntakeForm() {
                   {matchingLoading ? "Refreshing investor graph" : matchingSource === "backend" ? "Live ranking model" : "Demo ranking model"}
                 </div>
                 <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                  Good Evening, {dashboardUserName} 👋
+                  {timeGreeting}, {dashboardUserName} 👋
                 </h1>
                 <p className="mt-2 text-base text-slate-500">
                   Here&apos;s your fundraising intelligence overview.
@@ -920,7 +937,16 @@ function Sidebar({ userName, onLogout, onProfileClick, onMatchesClick, onPanelCl
   const navItems = [
     { label: "Dashboard", icon: <Home size={18} />, action: () => window.scrollTo({ top: 0, behavior: "smooth" }) },
     { label: "Matches", icon: <Target size={18} />, action: onMatchesClick },
-    { label: "Investors", icon: <Building2 size={18} />, action: () => onPanelClick({ id: "investors", title: "Investors", subtitle: "Investor workspace." }) },
+    {
+      label: "Investor Discovery District",
+      icon: <Building2 size={18} />,
+      action: () =>
+        onPanelClick({
+          id: "investor-discovery-district",
+          title: "Investor Discovery District",
+          subtitle: "Investor discovery workspace.",
+        }),
+    },
     { label: "Network", icon: <Network size={18} />, action: () => onPanelClick(panels[2]) },
     { label: "Outreach", icon: <Send size={18} />, action: () => onPanelClick({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." }) },
     { label: "Settings", icon: <Settings size={18} />, action: () => onPanelClick({ id: "settings", title: "Settings", subtitle: "Account and dashboard preferences." }) },
