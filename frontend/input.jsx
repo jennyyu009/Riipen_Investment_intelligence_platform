@@ -30,6 +30,14 @@ import {
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+const PAGE_STORAGE_KEY = "founderInvestorMatchPage";
+const VALID_PAGES = new Set(["landing", "form", "dashboard"]);
+
+const getInitialPage = () => {
+  if (typeof window === "undefined") return "landing";
+  const savedPage = window.localStorage.getItem(PAGE_STORAGE_KEY);
+  return VALID_PAGES.has(savedPage) ? savedPage : "landing";
+};
 
 const demoMatches = [
   ["Deloitte Ventures", 98],
@@ -112,7 +120,7 @@ const networkBars = [
 ];
 
 export default function FounderIntakeForm() {
-  const [page, setPage] = useState("landing");
+  const [page, setPage] = useState(getInitialPage);
   const [formData, setFormData] = useState({
     name: "",
     linkedinUrl: "",
@@ -185,6 +193,10 @@ export default function FounderIntakeForm() {
   ];
 
   const flowMetrics = ["ARR +31%", "CAC Payback 7.8m", "Seed Lead", "Fintech", "Warm Path", "Series A Ready"];
+
+  useEffect(() => {
+    window.localStorage.setItem(PAGE_STORAGE_KEY, page);
+  }, [page]);
 
   useEffect(() => {
     if (page !== "dashboard") return undefined;
@@ -422,6 +434,12 @@ export default function FounderIntakeForm() {
     console.log("Founder Intake Form Data:", formData);
   };
 
+  const handleFormKeyDown = (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    e.preventDefault();
+    handleSubmit(e);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
       {page === "landing" ? (
@@ -627,7 +645,7 @@ export default function FounderIntakeForm() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl bg-white p-6 shadow-xl md:p-8">
+            <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-6 rounded-3xl bg-white p-6 shadow-xl md:p-8">
               <section>
                 <div className="mb-5 flex items-center gap-3">
                   <div className="rounded-2xl bg-slate-100 p-3">
@@ -911,17 +929,7 @@ function Sidebar({ userName, onLogout, onProfileClick, onMatchesClick, onPanelCl
   return (
     <>
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col bg-[#07182f] px-4 py-5 text-white lg:flex">
-        <div className="mb-8 flex items-center gap-3 px-2">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-600 text-sm font-black tracking-wide">
-            AMG
-          </div>
-          <div>
-            <p className="text-sm font-semibold leading-5">AMG Venture Groups</p>
-            <p className="text-xs text-slate-400">Investor intelligence</p>
-          </div>
-        </div>
-
-        <nav className="space-y-1">
+        <nav className="space-y-1 pt-1">
           {navItems.map((item) => (
             <button
               key={item.label}
@@ -958,14 +966,9 @@ function Sidebar({ userName, onLogout, onProfileClick, onMatchesClick, onPanelCl
 
       <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#07182f] text-xs font-black text-white">
-              AMG
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-950">AMG Venture Groups</p>
-              <p className="text-xs text-slate-500">Dashboard</p>
-            </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-950">Dashboard</p>
+            <p className="text-xs text-slate-500">Investor intelligence</p>
           </div>
           <button type="button" onClick={onMatchesClick} className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
             Matches
