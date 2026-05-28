@@ -651,7 +651,7 @@ def run_relationship_intelligence(
 
     neo4j_uri = neo4j_uri if neo4j_uri is not None else os.getenv("NEO4J_URI")
     neo4j_user = neo4j_user if neo4j_user is not None else os.getenv("NEO4J_USERNAME", "neo4j")
-    neo4j_password = neo4j_password if neo4j_password is not None else os.getenv("NEO4J_PASSWORD", "12345678")
+    neo4j_password = neo4j_password if neo4j_password is not None else os.getenv("NEO4J_PASSWORD", "")
 
     if not neo4j_uri:
         return result

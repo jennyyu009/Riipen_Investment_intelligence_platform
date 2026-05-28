@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: investor-matching-backend
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: FRONTEND_ORIGINS
+        value: https://YOUR_PROJECT.vercel.app
+      - key: CORS_ORIGIN_REGEX
+        value: https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+
+      - key: DATABASE_URL
+        sync: false
