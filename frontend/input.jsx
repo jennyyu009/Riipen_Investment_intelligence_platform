@@ -1598,9 +1598,12 @@ function DashboardDrawer({
   handleClientFile,
   onClose,
 }) {
+  const fullScreenPanelIds = new Set(["relationship", "outreach", "investor-discovery-district"]);
+  const isFullScreenPanel = fullScreenPanelIds.has(activePanel.id);
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/35 p-4 backdrop-blur-sm">
-      <div className="ml-auto flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+    <div className={`fixed inset-0 z-50 ${isFullScreenPanel ? "bg-white" : "bg-slate-950/35 p-4 backdrop-blur-sm"}`}>
+      <div className={`flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl ${isFullScreenPanel ? "rounded-none" : "ml-auto max-w-3xl rounded-lg"}`}>
         <div className="flex items-center justify-between border-b border-slate-200 p-5">
           <div>
             <p className="text-xs font-semibold uppercase text-blue-700">{activePanel.id}</p>
@@ -2176,11 +2179,7 @@ function OutreachPanel({
                 )}
                 {selectedWarmIntro.confidence && <p className="mt-1 text-sm text-slate-700">Confidence: {selectedWarmIntro.confidence}</p>}
               </div>
-            ) : (
-              <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3">
-                <p className="text-sm font-semibold text-slate-700">No warm introducer found. Generate direct investor outreach instead.</p>
-              </div>
-            )}
+            ) : null}
             {!formData.pitchDeck && (
               <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
                 Upload a pitch deck to strengthen this outreach.
