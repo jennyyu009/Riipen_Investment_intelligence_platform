@@ -49,66 +49,27 @@ const getTimeBasedGreeting = () => {
   return "Good Night";
 };
 
-const demoMatches = [
-  ["Deloitte Ventures", 98],
-  ["OMERS Ventures", 98],
-  ["Portage Ventures", 94],
-  ["BDC Capital", 91],
-  ["Inovia Capital", 89],
-  ["Real Ventures", 86],
-  ["Golden Ventures", 84],
-  ["Relay Ventures", 82],
-  ["Georgian", 79],
-  ["Diagram Ventures", 77],
-  ["Information Venture Partners", 74],
-  ["StandUp Ventures", 72],
-  ["ScaleUp Ventures", 69],
-  ["Panache Ventures", 66],
-  ["MaRS IAF", 63],
+const developmentDemoMatches = import.meta.env.DEV ? [
+  ["Demo Investor 1", 98],
+  ["Demo Investor 2", 94],
+  ["Demo Investor 3", 91],
+  ["Demo Investor 4", 88],
+  ["Demo Investor 5", 85],
+  ["Demo Investor 6", 82],
+  ["Demo Investor 7", 79],
+  ["Demo Investor 8", 76],
+  ["Demo Investor 9", 73],
+  ["Demo Investor 10", 70],
+  ["Demo Investor 11", 67],
+  ["Demo Investor 12", 64],
+  ["Demo Investor 13", 61],
+  ["Demo Investor 14", 58],
+  ["Demo Investor 15", 55],
 ].map(([entityName, finalScore], index) => ({
   investor_id: index + 1,
   entity_name: entityName,
   final_score: finalScore,
-}));
-
-const recommendedInvestors = [
-  {
-    name: "Deloitte Ventures",
-    score: 98,
-    label: "Excellent Match",
-    initials: "DV",
-    bullets: [
-      "Fintech thesis aligns with payments infrastructure and compliance workflows.",
-      "Canadian portfolio concentration creates relevant market-pattern overlap.",
-      "Seed-stage appetite matches the current fundraising window.",
-    ],
-    relationshipPaths: [],
-  },
-  {
-    name: "OMERS Ventures",
-    score: 98,
-    label: "Excellent Match",
-    initials: "OV",
-    bullets: [
-      "Strong history backing Canadian fintech and enterprise software teams.",
-      "Network overlap through Toronto operators improves intro likelihood.",
-      "Fund size and ownership targets fit a pre-seed to seed raise.",
-    ],
-    relationshipPaths: [],
-  },
-  {
-    name: "Portage Ventures",
-    score: 94,
-    label: "Excellent Match",
-    initials: "PV",
-    bullets: [
-      "Deep vertical focus on financial services modernization.",
-      "Portfolio adjacency suggests practical go-to-market expertise.",
-      "Warm path available through Canadian venture ecosystem contacts.",
-    ],
-    relationshipPaths: [],
-  },
-];
+})) : [];
 
 const relationshipReadiness = [
   { label: "LinkedIn connections", value: "Not linked", state: "Action needed" },
@@ -128,6 +89,22 @@ const networkBars = [
   { label: "Medium", value: 28, color: "bg-blue-500" },
   { label: "Weak", value: 10, color: "bg-slate-300" },
 ];
+
+const getInvestorInitials = (name) =>
+  String(name || "Investor")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "IV";
+
+const getMatchLabel = (score) => {
+  const numericScore = Number(score || 0);
+  if (numericScore >= 94) return "Excellent Match";
+  if (numericScore >= 85) return "Strong Match";
+  if (numericScore >= 75) return "Good Match";
+  return "Watchlist";
+};
 
 const hasValue = (value) => value !== undefined && value !== null && value !== "";
 
@@ -602,7 +579,7 @@ export default function FounderIntakeForm() {
               relationshipIntelligence: investor.relationshipIntelligence || investor.relationship_intelligence,
               relationshipPaths: investor.relationshipPaths || investor.relationship_paths || investor.paths,
             }))
-          : demoMatches;
+          : developmentDemoMatches;
         const normalizedRelationships = normalizeRelationshipIntelligence(matchData, normalizedMatches);
 
         const remainingDelay = Math.max(0, 1400 - (Date.now() - startedAt));
@@ -621,7 +598,7 @@ export default function FounderIntakeForm() {
         const remainingDelay = Math.max(0, 1400 - (Date.now() - startedAt));
         window.setTimeout(() => {
           if (cancelled) return;
-          setMatches(demoMatches);
+          setMatches(developmentDemoMatches);
           setRelationshipInsights([]);
           setSelectedRelationshipIndex(0);
           setSelectedWarmPathIndex(0);
@@ -754,8 +731,27 @@ export default function FounderIntakeForm() {
     },
   ];
 
-  const dashboardUserName = formData.name || "Zhixin Yu";
-  const displayedMatches = matches.length ? matches : demoMatches;
+  const dashboardUserName = formData.name || "Founder";
+  const displayedMatches = matches.length ? matches : developmentDemoMatches;
+  const topInvestorCards = displayedMatches.slice(0, 3).map((match) => {
+    const score = Math.round(match.final_score || match.final_score_scaled || 0);
+    const location = [match.location_city, match.hq_country].filter(Boolean).join(", ");
+    const details = [match.investor_type, location].filter(Boolean).join(" / ");
+    return {
+      name: match.entity_name || "Investor",
+      score,
+      label: getMatchLabel(score),
+      initials: getInvestorInitials(match.entity_name),
+      bullets: [
+        match.match_reason || "Matched from the current founder and startup profile.",
+        details || "Investor profile returned from the backend matching model.",
+        hasValue(match.stage_score) || hasValue(match.industry_score)
+          ? `Stage score: ${Math.round(match.stage_score || 0)} / Industry score: ${Math.round(match.industry_score || 0)}`
+          : "Score details unavailable from backend.",
+      ],
+      relationshipPaths: match.relationshipPaths || match.relationship_paths || match.paths || [],
+    };
+  });
   const kpiCards = [
     { label: "Top Matches", value: "15", detail: matchingSource === "backend" ? "Live ranked investors" : "Ranked investor shortlist", icon: <Target size={19} /> },
     { label: "Pitch Deck Impact", value: `${deckBoost}%`, detail: formData.pitchDeck ? "Lift after deck upload" : "Projected matching lift", icon: <FileText size={19} /> },
@@ -930,7 +926,6 @@ export default function FounderIntakeForm() {
     setMissingFields([]);
     setSubmitted(true);
     setPage("dashboard");
-    console.log("Founder Intake Form Data:", formData);
   };
 
   const handleFormKeyDown = (e) => {
@@ -1334,16 +1329,22 @@ export default function FounderIntakeForm() {
                     </button>
                   </div>
 
-                  <div className="grid gap-4 2xl:grid-cols-3">
-                    {recommendedInvestors.map((investor, index) => (
-                      <InvestorCard
-                        key={investor.name}
-                        investor={investor}
-                        rank={index + 1}
-                        onViewDetails={() => openPanel({ id: "investor", title: investor.name, investor })}
-                      />
-                    ))}
-                  </div>
+                  {topInvestorCards.length > 0 ? (
+                    <div className="grid gap-4 2xl:grid-cols-3">
+                      {topInvestorCards.map((investor, index) => (
+                        <InvestorCard
+                          key={investor.name}
+                          investor={investor}
+                          rank={index + 1}
+                          onViewDetails={() => openPanel({ id: "investor", title: investor.name, investor })}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-600">
+                      No investor matches returned yet.
+                    </div>
+                  )}
                 </section>
 
                 <section className="grid gap-4 lg:grid-cols-3">
@@ -1833,7 +1834,7 @@ function ProfileTable({ formData }) {
       <table className="w-full overflow-hidden rounded-lg text-left text-sm">
         <tbody className="divide-y divide-slate-100">
           {[
-            ["Name", formData.name || "Zhixin Yu"],
+            ["Name", formData.name || "-"],
             ["Current Role", formData.currentRole || "-"],
             ["Email", formData.email || "-"],
             ["LinkedIn URL", formData.linkedinUrl || "-"],
