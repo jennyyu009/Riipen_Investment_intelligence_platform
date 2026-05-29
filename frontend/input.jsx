@@ -6,6 +6,8 @@ import {
   Building2,
   CheckCircle2,
   CircleDollarSign,
+  Copy,
+  ExternalLink,
   FileText,
   Handshake,
   Home,
@@ -134,11 +136,27 @@ const toArray = (value) => {
   return Array.isArray(value) ? value : [value];
 };
 
+const toScore = (value) => {
+  if (!hasValue(value)) return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round(number) : value;
+};
+
 const slugifyId = (value, fallback) =>
   String(value || fallback)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "") || fallback;
+
+const normalizeNodeType = (type, index, total) => {
+  const normalizedType = String(type || "").toLowerCase();
+  if (["founder", "person", "organization", "investor", "portfolio", "unknown"].includes(normalizedType)) {
+    return normalizedType;
+  }
+  if (index === 0) return "founder";
+  if (index === total - 1) return "investor";
+  return "person";
+};
 
 const normalizePathNode = (node, index, total) => {
   if (!node) return null;
@@ -147,7 +165,7 @@ const normalizePathNode = (node, index, total) => {
     return {
       id: slugifyId(`${node}-${index}`, `node-${index}`),
       label: node,
-      type: index === 0 ? "founder" : index === total - 1 ? "investor" : "person",
+      type: normalizeNodeType("", index, total),
     };
   }
 
@@ -157,50 +175,9 @@ const normalizePathNode = (node, index, total) => {
   return {
     id: node.id || slugifyId(`${label}-${index}`, `node-${index}`),
     label,
-    type: node.type || (index === 0 ? "founder" : index === total - 1 ? "investor" : "unknown"),
+    type: normalizeNodeType(node.type, index, total),
     subtitle: node.subtitle || node.role || node.description,
-  };
-};
-
-const normalizeRelationshipEntry = (entry, fallbackMatch = {}) => {
-  if (!entry) return null;
-  const sourcePath = entry.bestPath || entry.best_path || entry.path || entry.nodes || [];
-  const bestPath = toArray(sourcePath)
-    .map((node, index, nodes) => normalizePathNode(node, index, nodes.length))
-    .filter(Boolean);
-
-  if (!bestPath.length && !toArray(entry.edges).length) return null;
-
-  const investorName =
-    entry.investorName ||
-    entry.investor_name ||
-    entry.entity_name ||
-    fallbackMatch.entity_name ||
-    bestPath[bestPath.length - 1]?.label;
-
-  const relationshipScore = hasValue(entry.relationshipScore)
-    ? entry.relationshipScore
-    : entry.relationship_score;
-
-  const normalizedEntry = {
-    investorName,
-    matchScore: hasValue(entry.matchScore)
-      ? entry.matchScore
-      : hasValue(entry.match_score)
-        ? entry.match_score
-        : hasValue(entry.matching_score)
-          ? entry.matching_score
-          : fallbackMatch.final_score,
-    relationshipScore,
-    confidence: entry.confidence,
-    bestPath,
-    edges: toArray(entry.edges),
-    evidence: toArray(entry.evidence).filter(Boolean),
-  };
-
-  return {
-    ...normalizedEntry,
-    warmIntro: normalizeWarmIntro(entry, normalizedEntry),
+    linkedinUrl: node.linkedinUrl || node.linkedin_url || node.linkedin,
   };
 };
 
@@ -217,17 +194,56 @@ const getConfidenceLabel = (confidence, score) => {
 
 const inferIntroducer = (nodes) => nodes.find((node, index) => index > 0 && index < nodes.length - 1 && node.type === "person") || nodes[1];
 
-const normalizeWarmIntro = (entry, normalizedEntry) => {
-  const pathNodes = normalizedEntry.bestPath || [];
-  if (!pathNodes.length) return null;
+const getMatchLinkedInUrl = (match, contactName) => {
+  if (!match) return "";
+  const normalizedContact = String(contactName || "").trim().toLowerCase();
+  if (normalizedContact && String(match.contact_1_name || "").trim().toLowerCase() === normalizedContact) {
+    return match.contact_1_linkedin || "";
+  }
+  if (normalizedContact && String(match.contact_2_name || "").trim().toLowerCase() === normalizedContact) {
+    return match.contact_2_linkedin || "";
+  }
+  return match.company_linkedin || "";
+};
 
-  const pathEdges = toArray(entry.pathEdges || entry.path_edges || entry.edges);
-  const generatedEdges = pathEdges.length
-    ? pathEdges
-    : pathNodes.slice(0, -1).map((node, index) => ({
+const normalizeRelationshipEdge = (edge, nodes, entry) => {
+  if (!edge) return null;
+  const source = edge.source || edge.from || edge.start || edge.source_id;
+  const target = edge.target || edge.to || edge.end || edge.target_id;
+  if (!source || !target) return null;
+
+  return {
+    source,
+    target,
+    relationshipType: edge.relationshipType || edge.relationship_type || edge.rel_type || edge.match_type || entry?.match_type,
+    confidence: edge.confidence || entry?.confidence,
+  };
+};
+
+const normalizeWarmIntro = (entry, investorContext = {}, pathIndex = 0) => {
+  const sourcePath =
+    entry.nodes ||
+    entry.pathNodes ||
+    entry.path_nodes ||
+    entry.bestPath ||
+    entry.best_path ||
+    entry.path ||
+    [];
+  const nodes = toArray(sourcePath)
+    .map((node, index, pathNodes) => normalizePathNode(node, index, pathNodes.length))
+    .filter(Boolean);
+
+  if (!nodes.length) return null;
+
+  const explicitEdges = toArray(entry.edges || entry.pathEdges || entry.path_edges)
+    .map((edge) => normalizeRelationshipEdge(edge, nodes, entry))
+    .filter(Boolean);
+  const edges = explicitEdges.length
+    ? explicitEdges
+    : nodes.slice(0, -1).map((node, index) => ({
         source: node.id,
-        target: pathNodes[index + 1].id,
-        relationshipType: entry.match_type || entry.relationshipType || entry.relationship_type,
+        target: nodes[index + 1].id,
+        relationshipType: entry.relationshipType || entry.relationship_type || entry.match_type,
         confidence: entry.confidence,
       }));
   const introducer = entry.introducerName || entry.introducer_name
@@ -235,30 +251,103 @@ const normalizeWarmIntro = (entry, normalizedEntry) => {
         label: entry.introducerName || entry.introducer_name,
         subtitle: entry.introducerRole || entry.introducer_role,
       }
-    : inferIntroducer(pathNodes);
+    : inferIntroducer(nodes);
   const pathScore = hasValue(entry.pathScore)
     ? entry.pathScore
     : hasValue(entry.path_score)
       ? Math.round(entry.path_score)
-      : normalizedEntry.relationshipScore;
+      : entry.relationshipScore || entry.relationship_score || investorContext.relationshipScore;
+  const targetContact = entry.targetContact || entry.target_contact || entry.contactName || entry.contact_name;
+  const linkedinUrl =
+    entry.linkedinUrl ||
+    entry.linkedin_url ||
+    entry.targetLinkedIn ||
+    entry.target_linkedin ||
+    getMatchLinkedInUrl(investorContext.fallbackMatch, targetContact);
 
   return {
-    id: entry.id || slugifyId(`${normalizedEntry.investorName}-${pathNodes.map((node) => node.label).join("-")}`, "warm-intro"),
-    investorName: normalizedEntry.investorName,
-    targetContact: entry.targetContact || entry.target_contact,
+    id: entry.id || slugifyId(`${investorContext.investorName}-${pathIndex}-${nodes.map((node) => node.label).join("-")}`, "warm-intro"),
+    investorName: investorContext.investorName,
+    targetContact,
+    linkedinUrl,
     introducerName: introducer?.label,
     introducerRole: introducer?.subtitle,
-    pathNodes,
-    pathEdges: generatedEdges,
-    pathScore,
+    nodes,
+    edges,
+    pathNodes: nodes,
+    pathEdges: edges,
+    pathScore: toScore(pathScore),
     confidence: getConfidenceLabel(entry.confidence, pathScore),
-    evidence: normalizedEntry.evidence || [],
+    evidence: toArray(entry.evidence || investorContext.evidence).filter(Boolean),
     suggestedAction: entry.suggestedAction || entry.suggested_action,
   };
 };
 
+const normalizeInvestorRelationship = (entry, fallbackMatch = {}) => {
+  if (!entry) return null;
+  const rawPaths = toArray(entry.warmPaths || entry.warm_paths || entry.paths || entry.relationshipPaths || entry.relationship_paths);
+  const pathEntries = rawPaths.length || !(entry.path || entry.nodes || entry.bestPath || entry.best_path)
+    ? rawPaths
+    : [entry];
+  const investorName =
+    entry.investorName ||
+    entry.investor_name ||
+    entry.entity_name ||
+    fallbackMatch.entity_name ||
+    pathEntries[0]?.investorName ||
+    pathEntries[0]?.investor_name;
+
+  if (!investorName) return null;
+
+  const baseContext = {
+    investorName,
+    fallbackMatch,
+    relationshipScore: entry.relationshipScore || entry.relationship_score,
+    evidence: toArray(entry.evidence).filter(Boolean),
+  };
+  const warmPaths = pathEntries
+    .map((path, index) => normalizeWarmIntro({ ...path, investorName }, baseContext, index))
+    .filter(Boolean);
+  const bestWarmPath = warmPaths[0];
+  const relationshipScore = toScore(entry.relationshipScore || entry.relationship_score || bestWarmPath?.pathScore);
+
+  return {
+    investorName,
+    matchScore: toScore(
+      entry.matchScore ||
+        entry.match_score ||
+        entry.matching_score ||
+        entry.final_score ||
+        fallbackMatch.final_score,
+    ),
+    relationshipScore,
+    confidence: entry.confidence || bestWarmPath?.confidence,
+    warmPaths,
+  };
+};
+
+const mergeRelationshipMatches = (matches) => {
+  const grouped = new Map();
+
+  matches.filter(Boolean).forEach((match) => {
+    const key = match.investorName;
+    if (!grouped.has(key)) {
+      grouped.set(key, { ...match, warmPaths: [...(match.warmPaths || [])] });
+      return;
+    }
+
+    const current = grouped.get(key);
+    current.matchScore = current.matchScore ?? match.matchScore;
+    current.relationshipScore = current.relationshipScore ?? match.relationshipScore;
+    current.confidence = current.confidence ?? match.confidence;
+    current.warmPaths = [...current.warmPaths, ...(match.warmPaths || [])];
+  });
+
+  return Array.from(grouped.values());
+};
+
 const getWarmIntroPathSummary = (warmIntro) => {
-  const labels = warmIntro?.pathNodes?.map((node) => node.label).filter(Boolean) || [];
+  const labels = (warmIntro?.nodes || warmIntro?.pathNodes || []).map((node) => node.label).filter(Boolean);
   return labels.join(" -> ");
 };
 
@@ -268,23 +357,19 @@ const buildOutreachEmail = ({ formData, warmIntro, emailTone, fallbackInvestor }
   const investorName = warmIntro?.investorName || fallbackInvestor || "the investor";
   const introducerName = warmIntro?.introducerName;
   const pathSummary = getWarmIntroPathSummary(warmIntro);
-  const relationshipReason = pathSummary || warmIntro?.evidence?.[0] || "your network";
+  const relationshipReason = pathSummary || warmIntro?.evidence?.[0] || "your relationship path";
   const startupDescription =
     formData.fundraisingPreference ||
     [formData.stage, formData.industry?.join(", ")].filter(Boolean).join(" ") ||
-    "company";
+    "a company";
   const deckLine = formData.pitchDeck ? "\n\nI can also share our pitch deck for more context." : "";
-  const concise = emailTone === "Concise";
-  const friendlyGreeting = emailTone === "Friendly" ? "I hope you're doing well." : "I hope you're doing well.";
 
   if (!introducerName) {
     return {
       to: warmIntro?.targetContact || investorName,
       introRequestTo: "",
       subject: `Introduction: ${startupName} x ${investorName}`,
-      body: concise
-        ? `Hi ${investorName},\n\nI'm ${founderName}, founder of ${startupName}. We are building ${startupDescription}.\n\nBased on your investment focus, I believe there may be a strong fit between our company and your portfolio.${deckLine}\n\nI'd love to share more and see if this could be relevant.\n\nBest,\n${founderName}`
-        : `Hi ${investorName},\n\nI'm ${founderName}, founder of ${startupName}. We are building ${startupDescription}.\n\nBased on your investment focus, I believe there may be a strong fit between our company and your portfolio.${deckLine}\n\nI'd love to share more and see if this could be relevant.\n\nBest,\n${founderName}`,
+      body: `Hi ${investorName},\n\nI'm ${founderName}, founder of ${startupName}. We are building ${startupDescription}.\n\nBased on your investment focus, I believe there may be a strong fit between our company and your portfolio.${deckLine}\n\nI'd love to share more and see if this could be relevant.\n\nBest,\n${founderName}`,
     };
   }
 
@@ -292,9 +377,7 @@ const buildOutreachEmail = ({ formData, warmIntro, emailTone, fallbackInvestor }
     to: warmIntro?.targetContact || investorName,
     introRequestTo: introducerName,
     subject: `Warm introduction to ${investorName}?`,
-    body: concise
-      ? `Hi ${introducerName},\n\nI'm reaching out because you may be connected to ${investorName} through ${relationshipReason}.\n\nI'm currently building ${startupName}, a ${startupDescription}. I think ${investorName} could be a strong fit for our current fundraising goals.${deckLine}\n\nWould you feel comfortable making a brief introduction?\n\nBest,\n${founderName}`
-      : `Hi ${introducerName},\n\n${friendlyGreeting} I'm reaching out because I noticed you may be connected to ${investorName} through ${relationshipReason}.\n\nI'm currently building ${startupName}, a ${startupDescription}. Based on their investment focus and our current fundraising goals, I think ${investorName} could be a strong fit.${deckLine}\n\nWould you feel comfortable making a brief introduction?\n\nI'm happy to send over a short blurb or forwardable note.\n\nBest,\n${founderName}`,
+    body: `Hi ${introducerName},\n\nI hope you're doing well. I noticed that you may be connected to ${investorName} through ${relationshipReason}.\n\nI'm currently building ${startupName}, and based on their investment focus and our fundraising goals, I think ${investorName} could be a strong fit.${deckLine}\n\nWould you feel comfortable making a brief introduction?\n\nI'm happy to send over a short forwardable blurb.\n\nBest,\n${founderName}`,
   };
 };
 
@@ -335,12 +418,13 @@ const normalizeRelationshipIntelligence = (payload, matches = []) => {
     return [...relationshipEntries, ...pathEntries].map((entry) => [entry, match]);
   });
 
-  return [
+  return mergeRelationshipMatches([
     ...directEntries.map((entry) => [entry, matches.find((match) => match.entity_name === (entry.investorName || entry.investor_name))]),
     ...matchEntries,
   ]
-    .map(([entry, match]) => normalizeRelationshipEntry(entry, match))
-    .filter(Boolean);
+    .map(([entry, match]) => normalizeInvestorRelationship(entry, match))
+    .filter(Boolean)
+    .filter((match) => match.investorName));
 };
 
 export default function FounderIntakeForm() {
@@ -367,6 +451,7 @@ export default function FounderIntakeForm() {
   const [matchingSource, setMatchingSource] = useState("demo");
   const [relationshipInsights, setRelationshipInsights] = useState([]);
   const [selectedRelationshipIndex, setSelectedRelationshipIndex] = useState(0);
+  const [selectedWarmPathIndex, setSelectedWarmPathIndex] = useState(0);
   const [connectionDataFile, setConnectionDataFile] = useState(null);
   const [relationshipLoading, setRelationshipLoading] = useState(false);
   const [relationshipError, setRelationshipError] = useState("");
@@ -474,6 +559,7 @@ export default function FounderIntakeForm() {
       setMatches([]);
       setRelationshipInsights([]);
       setSelectedRelationshipIndex(0);
+      setSelectedWarmPathIndex(0);
       setSelectedWarmIntro(null);
       setSelectedInvestor(null);
 
@@ -525,7 +611,8 @@ export default function FounderIntakeForm() {
           setMatches(normalizedMatches);
           setRelationshipInsights(normalizedRelationships);
           setSelectedRelationshipIndex(0);
-          setSelectedWarmIntro(normalizedRelationships[0]?.warmIntro || null);
+          setSelectedWarmPathIndex(0);
+          setSelectedWarmIntro(normalizedRelationships[0]?.warmPaths?.[0] || null);
           setSelectedInvestor(normalizedRelationships[0]?.investorName || null);
           setMatchingSource(topInvestors.length ? "backend" : "demo");
           setMatchingLoading(false);
@@ -537,6 +624,7 @@ export default function FounderIntakeForm() {
           setMatches(demoMatches);
           setRelationshipInsights([]);
           setSelectedRelationshipIndex(0);
+          setSelectedWarmPathIndex(0);
           setSelectedWarmIntro(null);
           setSelectedInvestor(null);
           setMatchingSource("demo");
@@ -553,10 +641,15 @@ export default function FounderIntakeForm() {
   }, [page]);
 
   useEffect(() => {
-    const nextWarmIntro = relationshipInsights[selectedRelationshipIndex]?.warmIntro || null;
+    const selectedMatch = relationshipInsights[selectedRelationshipIndex];
+    const safeWarmPathIndex = Math.min(selectedWarmPathIndex, Math.max((selectedMatch?.warmPaths?.length || 1) - 1, 0));
+    const nextWarmIntro = selectedMatch?.warmPaths?.[safeWarmPathIndex] || null;
+    if (safeWarmPathIndex !== selectedWarmPathIndex) {
+      setSelectedWarmPathIndex(safeWarmPathIndex);
+    }
     setSelectedWarmIntro(nextWarmIntro);
-    setSelectedInvestor(nextWarmIntro?.investorName || null);
-  }, [relationshipInsights, selectedRelationshipIndex]);
+    setSelectedInvestor(selectedMatch?.investorName || nextWarmIntro?.investorName || null);
+  }, [relationshipInsights, selectedRelationshipIndex, selectedWarmPathIndex]);
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
@@ -686,6 +779,7 @@ export default function FounderIntakeForm() {
     setRelationshipError("");
     setRelationshipInsights([]);
     setSelectedRelationshipIndex(0);
+    setSelectedWarmPathIndex(0);
     setSelectedWarmIntro(null);
     setSelectedInvestor(null);
 
@@ -714,10 +808,12 @@ export default function FounderIntakeForm() {
 
       const normalizedRelationships = normalizeRelationshipIntelligence({ relationship_results: data }, displayedMatches);
       setRelationshipInsights(normalizedRelationships);
-      setSelectedWarmIntro(normalizedRelationships[0]?.warmIntro || null);
+      setSelectedWarmPathIndex(0);
+      setSelectedWarmIntro(normalizedRelationships[0]?.warmPaths?.[0] || null);
       setSelectedInvestor(normalizedRelationships[0]?.investorName || null);
     } catch (error) {
       setRelationshipInsights([]);
+      setSelectedWarmPathIndex(0);
       setSelectedWarmIntro(null);
       setSelectedInvestor(null);
       setRelationshipError("Unable to generate relationship intelligence. Please check that the backend service is available.");
@@ -730,10 +826,33 @@ export default function FounderIntakeForm() {
   const selectWarmIntroByIndex = (index) => {
     const nextInsight = relationshipInsights[index];
     setSelectedRelationshipIndex(index);
-    setSelectedWarmIntro(nextInsight?.warmIntro || null);
+    setSelectedWarmPathIndex(0);
+    setSelectedWarmIntro(nextInsight?.warmPaths?.[0] || null);
     setSelectedInvestor(nextInsight?.investorName || null);
     setGeneratedEmail({ to: "", introRequestTo: "", subject: "", body: "" });
     setEmailNotice("");
+  };
+
+  const selectWarmPathByIndex = (index) => {
+    const selectedMatch = relationshipInsights[selectedRelationshipIndex];
+    const nextWarmPath = selectedMatch?.warmPaths?.[index] || null;
+    setSelectedWarmPathIndex(index);
+    setSelectedWarmIntro(nextWarmPath);
+    setSelectedInvestor(selectedMatch?.investorName || nextWarmPath?.investorName || null);
+    setGeneratedEmail({ to: "", introRequestTo: "", subject: "", body: "" });
+    setEmailNotice("");
+  };
+
+  const getCurrentOutreachDraft = () => {
+    if (generatedEmail.subject || generatedEmail.body) return generatedEmail;
+    const email = buildOutreachEmail({
+      formData,
+      warmIntro: selectedWarmIntro,
+      emailTone,
+      fallbackInvestor: selectedInvestor,
+    });
+    setGeneratedEmail(email);
+    return email;
   };
 
   const handleGenerateWarmIntroEmail = () => {
@@ -741,25 +860,53 @@ export default function FounderIntakeForm() {
       formData,
       warmIntro: selectedWarmIntro,
       emailTone,
-      fallbackInvestor: selectedInvestor || displayedMatches[0]?.entity_name,
+      fallbackInvestor: selectedInvestor,
     });
     setGeneratedEmail(email);
     setEmailNotice("");
   };
 
   const handleCopyEmail = async () => {
-    const text = `Subject: ${generatedEmail.subject}\n\n${generatedEmail.body}`;
-    if (!generatedEmail.subject && !generatedEmail.body) return;
+    const draft = getCurrentOutreachDraft();
+    const text = `Subject: ${draft.subject}\n\n${draft.body}`;
+    if (!draft.subject && !draft.body) return;
     try {
       await navigator.clipboard.writeText(text);
-      setEmailNotice("Email copied to clipboard.");
+      setEmailNotice("Message copied to clipboard.");
     } catch (error) {
       setEmailNotice("Copy failed. Select the draft text and copy it manually.");
     }
   };
 
   const handleSendEmail = () => {
-    setEmailNotice("Email draft prepared. Connect email service to send directly.");
+    const draft = getCurrentOutreachDraft();
+    const subject = draft.subject || "Introduction";
+    const body = draft.body || "";
+    const to = draft.introRequestTo || draft.to || "";
+    const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailtoUrl;
+    setEmailNotice("Email draft prepared.");
+  };
+
+  const handleSendLinkedIn = async () => {
+    const linkedinUrl = selectedWarmIntro?.linkedinUrl;
+    if (!linkedinUrl) {
+      setEmailNotice("No LinkedIn URL available for this contact.");
+      return;
+    }
+
+    let copied = false;
+    const draft = getCurrentOutreachDraft();
+    if (draft.body) {
+      try {
+        await navigator.clipboard.writeText(draft.body);
+        copied = true;
+      } catch (error) {
+        copied = false;
+      }
+    }
+    window.open(linkedinUrl, "_blank", "noopener,noreferrer");
+    setEmailNotice(copied ? "Message copied. LinkedIn profile opened." : "LinkedIn profile opened. Copy failed; select the draft text and copy it manually.");
   };
 
   const handleSubmit = (e) => {
@@ -1256,7 +1403,9 @@ export default function FounderIntakeForm() {
               matchingSource={matchingSource}
               relationshipInsights={relationshipInsights}
               selectedRelationshipIndex={selectedRelationshipIndex}
+              selectedWarmPathIndex={selectedWarmPathIndex}
               onWarmIntroSelect={selectWarmIntroByIndex}
+              onWarmPathSelect={selectWarmPathByIndex}
               selectedWarmIntro={selectedWarmIntro}
               selectedInvestor={selectedInvestor}
               generatedEmail={generatedEmail}
@@ -1267,10 +1416,13 @@ export default function FounderIntakeForm() {
               onGenerateWarmIntroEmail={handleGenerateWarmIntroEmail}
               onCopyEmail={handleCopyEmail}
               onSendEmail={handleSendEmail}
+              onSendLinkedIn={handleSendLinkedIn}
               connectionDataFile={connectionDataFile}
+              pitchDeckUploaded={Boolean(formData.pitchDeck)}
               relationshipLoading={relationshipLoading}
               relationshipError={relationshipError}
               onConnectionDataChange={handleConnectionDataChange}
+              onPitchDeckChange={handlePitchDeckChange}
               onOpenOutreach={() => setActivePanel({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." })}
               chatMessages={chatMessages}
               chatInput={chatInput}
@@ -1575,7 +1727,9 @@ function DashboardDrawer({
   matchingSource,
   relationshipInsights,
   selectedRelationshipIndex,
+  selectedWarmPathIndex,
   onWarmIntroSelect,
+  onWarmPathSelect,
   selectedWarmIntro,
   selectedInvestor,
   generatedEmail,
@@ -1586,10 +1740,13 @@ function DashboardDrawer({
   onGenerateWarmIntroEmail,
   onCopyEmail,
   onSendEmail,
+  onSendLinkedIn,
   connectionDataFile,
+  pitchDeckUploaded,
   relationshipLoading,
   relationshipError,
   onConnectionDataChange,
+  onPitchDeckChange,
   onOpenOutreach,
   chatMessages,
   chatInput,
@@ -1626,18 +1783,22 @@ function DashboardDrawer({
             connectionDataFile={connectionDataFile}
             relationshipInsights={relationshipInsights}
             selectedRelationshipIndex={selectedRelationshipIndex}
+            selectedWarmPathIndex={selectedWarmPathIndex}
             selectedWarmIntro={selectedWarmIntro}
             onWarmIntroSelect={onWarmIntroSelect}
+            onWarmPathSelect={onWarmPathSelect}
             relationshipLoading={relationshipLoading}
             relationshipError={relationshipError}
             onConnectionDataChange={onConnectionDataChange}
+            onPitchDeckChange={onPitchDeckChange}
             onOpenOutreach={onOpenOutreach}
+            pitchDeckUploaded={pitchDeckUploaded}
           />
         ) : activePanel.id === "outreach" ? (
           <OutreachPanel
             formData={formData}
             selectedWarmIntro={selectedWarmIntro}
-            selectedInvestor={selectedInvestor || matches[0]?.entity_name}
+            selectedInvestor={selectedInvestor}
             generatedEmail={generatedEmail}
             setGeneratedEmail={setGeneratedEmail}
             emailTone={emailTone}
@@ -1646,6 +1807,7 @@ function DashboardDrawer({
             onGenerateWarmIntroEmail={onGenerateWarmIntroEmail}
             onCopyEmail={onCopyEmail}
             onSendEmail={onSendEmail}
+            onSendLinkedIn={onSendLinkedIn}
           />
         ) : (
           <ChatWorkspace
@@ -1878,22 +2040,27 @@ function formatRelationshipScore(value) {
 }
 
 function RelationshipIntelligencePanel({
-  matches,
   connectionDataFile,
   relationshipInsights,
   selectedRelationshipIndex,
+  selectedWarmPathIndex,
   selectedWarmIntro,
   onWarmIntroSelect,
+  onWarmPathSelect,
   relationshipLoading,
   relationshipError,
   onConnectionDataChange,
+  onPitchDeckChange,
   onOpenOutreach,
+  pitchDeckUploaded,
 }) {
-  const locked = !connectionDataFile;
+  const locked = !pitchDeckUploaded;
   const hasRelationshipData = relationshipInsights.length > 0;
   const safeIndex = Math.min(selectedRelationshipIndex, Math.max(relationshipInsights.length - 1, 0));
   const selectedInsight = relationshipInsights[safeIndex];
-  const fallbackInvestor = selectedWarmIntro?.investorName || selectedInsight?.investorName || matches[0]?.entity_name;
+  const selectedWarmPaths = selectedInsight?.warmPaths || [];
+  const safeWarmPathIndex = Math.min(selectedWarmPathIndex, Math.max(selectedWarmPaths.length - 1, 0));
+  const selectedPath = selectedWarmPaths[safeWarmPathIndex] || selectedWarmIntro || null;
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50 p-5">
@@ -1917,23 +2084,26 @@ function RelationshipIntelligencePanel({
         <div className="relative mt-5">
           <div className={locked || relationshipLoading ? "pointer-events-none select-none blur-[3px]" : ""}>
             {hasRelationshipData ? (
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-                <RelationshipGraph
-                  warmIntro={selectedWarmIntro}
-                  fallbackInvestor={fallbackInvestor}
-                  onSelect={() => onWarmIntroSelect(safeIndex)}
-                />
-                <RelationshipSummaryPanel
-                  insights={relationshipInsights}
+              <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+                <RelationshipInvestorList
+                  investors={relationshipInsights}
                   selectedIndex={safeIndex}
-                  selectedInsight={selectedInsight}
-                  selectedWarmIntro={selectedWarmIntro}
                   onSelect={onWarmIntroSelect}
+                />
+                <RelationshipGraph
+                  selectedInvestor={selectedInsight}
+                  selectedPath={selectedPath}
+                  selectedWarmPathIndex={safeWarmPathIndex}
+                  onWarmPathSelect={onWarmPathSelect}
+                />
+                <SelectedInvestorDetails
+                  selectedInvestor={selectedInsight}
+                  selectedPath={selectedPath}
                   onOpenOutreach={onOpenOutreach}
                 />
               </div>
             ) : (
-              <EmptyRelationshipState title="No warm introduction path found." investorName={fallbackInvestor} />
+              <EmptyRelationshipState title="No relationship intelligence results found." />
             )}
           </div>
 
@@ -1946,13 +2116,13 @@ function RelationshipIntelligencePanel({
                 <p className="mt-3 text-sm font-semibold text-slate-950">
                   {relationshipLoading
                     ? "Generating relationship intelligence from your connection data."
-                    : "Upload your connection data to unlock relationship intelligence insights."}
+                    : "Upload your pitch deck to unlock relationship intelligence insights."}
                 </p>
-                {!relationshipLoading && (
+                {!relationshipLoading && !pitchDeckUploaded && (
                   <label className="mt-4 inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
                     <Upload size={16} />
-                    Upload Connection Data
-                    <input type="file" accept=".csv,text/csv" onChange={onConnectionDataChange} className="hidden" />
+                    Upload Pitch Deck
+                    <input type="file" accept="application/pdf,.pdf" onChange={onPitchDeckChange} className="hidden" />
                   </label>
                 )}
               </div>
@@ -1964,27 +2134,97 @@ function RelationshipIntelligencePanel({
   );
 }
 
-function RelationshipGraph({ warmIntro, fallbackInvestor, onSelect }) {
-  const nodes = warmIntro?.pathNodes || [];
-  const edges = warmIntro?.pathEdges || [];
+function RelationshipInvestorList({ investors, selectedIndex, onSelect }) {
+  return (
+    <aside className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className="mb-4">
+        <p className="text-sm font-semibold text-slate-950">Top Investor Matches</p>
+        <p className="mt-1 text-xs text-slate-500">Backend relationship intelligence results only.</p>
+      </div>
+      <div className="space-y-3">
+        {investors.map((investor, index) => (
+          <button
+            key={`${investor.investorName}-${index}`}
+            type="button"
+            onClick={() => onSelect(index)}
+            className={`w-full rounded-lg border p-3 text-left transition ${
+              selectedIndex === index
+                ? "border-blue-300 bg-blue-50 shadow-sm ring-2 ring-blue-100"
+                : "border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/60"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-950">{investor.investorName}</p>
+              <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
+                {investor.warmPaths.length} paths
+              </span>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-slate-600">
+              {hasValue(investor.matchScore) && <p>Match score: {formatRelationshipScore(investor.matchScore)}</p>}
+              {hasValue(investor.relationshipScore) && <p>Relationship score: {formatRelationshipScore(investor.relationshipScore)}</p>}
+              {investor.confidence && <p>Confidence: {investor.confidence}</p>}
+            </div>
+          </button>
+        ))}
+      </div>
+    </aside>
+  );
+}
 
-  if (!nodes.length) return <EmptyRelationshipState compact title="No warm introduction path found." investorName={fallbackInvestor} />;
+function getGraphNodeStyles(type) {
+  const styles = {
+    founder: "border-blue-600 bg-blue-600 text-white",
+    person: "border-blue-600 bg-white text-blue-700",
+    organization: "border-blue-200 bg-blue-50 text-blue-800",
+    investor: "border-[#07182f] bg-[#07182f] text-white",
+    portfolio: "border-blue-200 bg-white text-blue-700",
+    unknown: "border-slate-300 bg-slate-100 text-slate-600",
+  };
+
+  return styles[type] || styles.unknown;
+}
+
+function RelationshipGraph({ selectedInvestor, selectedPath, selectedWarmPathIndex, onWarmPathSelect }) {
+  const nodes = selectedPath?.nodes || [];
+  const edges = selectedPath?.edges || [];
+
+  if (!selectedInvestor) return <EmptyRelationshipState compact title="No relationship intelligence results found." />;
+  if (!nodes.length) return <EmptyRelationshipState compact title="No warm introduction path found for this investor." investorName={selectedInvestor.investorName} />;
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-slate-950">Network Visualization</p>
-          <p className="mt-1 text-xs text-slate-500">Selected warm introduction path from relationship data.</p>
+          <p className="text-sm font-semibold text-slate-950">Relationship Graph</p>
+          <p className="mt-1 text-xs text-slate-500">Selected warm introduction path from backend data.</p>
         </div>
         <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
           <Network size={13} />
-          Best Warm Intro
+          Warm Path
         </span>
       </div>
 
-      <div className="min-h-[330px] overflow-x-auto rounded-lg border border-slate-200 bg-white p-4">
-        <button type="button" onClick={onSelect} className="flex min-w-max items-center py-16 text-left">
+      {selectedInvestor.warmPaths.length > 1 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {selectedInvestor.warmPaths.map((path, index) => (
+            <button
+              key={path.id}
+              type="button"
+              onClick={() => onWarmPathSelect(index)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
+                selectedWarmPathIndex === index
+                  ? "bg-blue-600 text-white ring-blue-600"
+                  : "bg-blue-50 text-blue-700 ring-blue-100 hover:bg-blue-100"
+              }`}
+            >
+              Path {index + 1}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="min-h-[390px] overflow-x-auto rounded-lg border border-blue-100 bg-blue-50/40 p-5">
+        <div className="flex min-w-max items-center py-20 text-left">
           {nodes.map((node, index) => {
             const nextNode = nodes[index + 1];
             const edge = nextNode ? getConsecutiveEdge(edges, node, nextNode) : null;
@@ -1992,17 +2232,17 @@ function RelationshipGraph({ warmIntro, fallbackInvestor, onSelect }) {
 
             return (
               <React.Fragment key={node.id}>
-                <div className={`flex w-36 shrink-0 flex-col items-center rounded-lg border-2 p-3 text-center shadow-sm ring-2 ring-blue-100 ${getRelationshipNodeStyles(node.type)}`}>
-                  <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-white/70 text-blue-700 ring-1 ring-black/5">
+                <div className="flex w-36 shrink-0 flex-col items-center text-center">
+                  <div className={`flex h-16 w-16 items-center justify-center rounded-full border-2 shadow-sm ring-4 ring-white ${getGraphNodeStyles(node.type)}`}>
                     {getRelationshipNodeIcon(node.type)}
                   </div>
-                  <p className="w-full text-sm font-semibold leading-5">{node.label}</p>
-                  {node.subtitle && <p className="mt-1 w-full text-xs leading-4 opacity-70">{node.subtitle}</p>}
-                  {node.type && <p className="mt-2 text-[11px] font-semibold uppercase opacity-60">{node.type}</p>}
+                  <p className="mt-3 w-full text-sm font-semibold leading-5 text-slate-950">{node.label}</p>
+                  {node.subtitle && <p className="mt-1 w-full text-xs leading-4 text-slate-500">{node.subtitle}</p>}
+                  {node.type && <p className="mt-2 text-[11px] font-semibold uppercase text-blue-700">{node.type}</p>}
                 </div>
 
-                {nextNode && (
-                  <div className="relative flex w-24 shrink-0 items-center justify-center">
+                {nextNode && edge && (
+                  <div className="relative flex w-28 shrink-0 items-center justify-center">
                     <div className="h-0.5 w-full bg-blue-500" />
                     <ArrowRight className="absolute right-0 text-blue-600" size={16} />
                     {edgeLabel && (
@@ -2015,9 +2255,86 @@ function RelationshipGraph({ warmIntro, fallbackInvestor, onSelect }) {
               </React.Fragment>
             );
           })}
-        </button>
+        </div>
       </div>
     </section>
+  );
+}
+
+function SelectedInvestorDetails({ selectedInvestor, selectedPath, onOpenOutreach }) {
+  if (!selectedInvestor) return <EmptyRelationshipState compact title="No relationship intelligence results found." />;
+  const pathSummary = getWarmIntroPathSummary(selectedPath);
+
+  return (
+    <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-950">{selectedInvestor.investorName}</p>
+          <p className="mt-1 text-xs text-slate-500">Selected investor details</p>
+        </div>
+        {hasValue(selectedInvestor.matchScore) && (
+          <span className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
+            {formatRelationshipScore(selectedInvestor.matchScore)}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-5 space-y-3 text-sm">
+        {hasValue(selectedInvestor.relationshipScore) && (
+          <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase text-slate-500">Relationship Score</p>
+            <p className="mt-1 font-semibold text-slate-950">{formatRelationshipScore(selectedInvestor.relationshipScore)}</p>
+          </div>
+        )}
+
+        {selectedInvestor.confidence && (
+          <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase text-slate-500">Confidence</p>
+            <p className="mt-1 font-semibold text-slate-950">{selectedInvestor.confidence}</p>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+          <p className="text-xs font-semibold uppercase text-blue-700">Best Warm Introduction Path</p>
+          {selectedPath ? (
+            <>
+              <p className="mt-2 font-semibold leading-6 text-slate-950">{pathSummary}</p>
+              {selectedPath.introducerName && <p className="mt-2 text-slate-700">Introducer: {selectedPath.introducerName}</p>}
+              {selectedPath.targetContact && <p className="mt-1 text-slate-700">Target contact: {selectedPath.targetContact}</p>}
+              {selectedPath.confidence && <p className="mt-1 text-slate-700">Confidence: {selectedPath.confidence}</p>}
+            </>
+          ) : (
+            <p className="mt-2 font-semibold text-slate-700">No warm introduction path found for this investor.</p>
+          )}
+        </div>
+
+        {selectedPath?.evidence?.length > 0 && (
+          <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase text-slate-500">Evidence & Signals</p>
+            <ul className="mt-2 space-y-2">
+              {selectedPath.evidence.map((evidence) => (
+                <li key={evidence} className="flex gap-2 leading-5 text-slate-600">
+                  <CheckCircle2 className="mt-0.5 shrink-0 text-blue-600" size={15} />
+                  <span>{evidence}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-slate-100 bg-white p-3">
+          <p className="text-xs font-semibold uppercase text-slate-500">Suggested Next Step</p>
+          <button
+            type="button"
+            onClick={onOpenOutreach}
+            className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
+          >
+            <Send size={16} />
+            {selectedPath ? "Generate outreach using this warm path" : "Generate direct investor outreach"}
+          </button>
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -2159,9 +2476,11 @@ function OutreachPanel({
   onGenerateWarmIntroEmail,
   onCopyEmail,
   onSendEmail,
+  onSendLinkedIn,
 }) {
   const hasIntroducer = Boolean(selectedWarmIntro?.introducerName);
   const pathSummary = getWarmIntroPathSummary(selectedWarmIntro);
+  const hasWarmPath = Boolean(selectedWarmIntro?.nodes?.length || selectedWarmIntro?.pathNodes?.length);
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50 p-5">
@@ -2170,16 +2489,37 @@ function OutreachPanel({
           <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase text-blue-700">Warm Intro Helper</p>
             <h3 className="mt-1 text-lg font-semibold text-slate-950">{selectedWarmIntro?.investorName || selectedInvestor || "Investor outreach"}</h3>
-            {selectedWarmIntro?.pathNodes?.length > 0 ? (
+            {hasWarmPath ? (
               <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
                 <p className="text-xs font-semibold uppercase text-blue-700">Warm Introduction Path</p>
                 <p className="mt-2 text-sm font-semibold leading-6 text-slate-950">{pathSummary}</p>
                 {selectedWarmIntro.introducerName && (
                   <p className="mt-2 text-sm text-slate-700">Suggested introducer: {selectedWarmIntro.introducerName}</p>
                 )}
+                {selectedWarmIntro.targetContact && (
+                  <p className="mt-1 text-sm text-slate-700">Target contact: {selectedWarmIntro.targetContact}</p>
+                )}
                 {selectedWarmIntro.confidence && <p className="mt-1 text-sm text-slate-700">Confidence: {selectedWarmIntro.confidence}</p>}
               </div>
             ) : null}
+            <div className="mt-4 grid gap-2">
+              <button type="button" onClick={onGenerateWarmIntroEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
+                <Sparkles size={16} />
+                Generate Warm Intro Message
+              </button>
+              <button type="button" onClick={onCopyEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
+                <Copy size={16} />
+                Copy Message
+              </button>
+              <button type="button" onClick={onSendEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-100 bg-white px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-50">
+                <Mail size={16} />
+                Send via Email
+              </button>
+              <button type="button" onClick={onSendLinkedIn} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#07182f] px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
+                <ExternalLink size={16} />
+                Send via LinkedIn
+              </button>
+            </div>
             {!formData.pitchDeck && (
               <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
                 Upload a pitch deck to strengthen this outreach.
@@ -2246,15 +2586,19 @@ function OutreachPanel({
           <div className="mt-5 flex flex-wrap gap-3">
             <button type="button" onClick={onGenerateWarmIntroEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
               <Sparkles size={16} />
-              Generate Warm Intro Email
+              Generate Warm Intro Message
             </button>
             <button type="button" onClick={onCopyEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
-              <Link size={16} />
-              Copy Email
+              <Copy size={16} />
+              Copy Message
             </button>
             <button type="button" onClick={onSendEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#07182f] px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
-              <Send size={16} />
-              Send Email
+              <Mail size={16} />
+              Send via Email
+            </button>
+            <button type="button" onClick={onSendLinkedIn} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
+              <ExternalLink size={16} />
+              Send via LinkedIn
             </button>
           </div>
           {emailNotice && <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">{emailNotice}</p>}
