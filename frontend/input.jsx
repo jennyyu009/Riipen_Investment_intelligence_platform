@@ -49,27 +49,28 @@ const getTimeBasedGreeting = () => {
   return "Good Night";
 };
 
-const developmentDemoMatches = import.meta.env.DEV ? [
-  ["Demo Investor 1", 98],
-  ["Demo Investor 2", 94],
-  ["Demo Investor 3", 91],
-  ["Demo Investor 4", 88],
-  ["Demo Investor 5", 85],
-  ["Demo Investor 6", 82],
-  ["Demo Investor 7", 79],
-  ["Demo Investor 8", 76],
-  ["Demo Investor 9", 73],
-  ["Demo Investor 10", 70],
-  ["Demo Investor 11", 67],
-  ["Demo Investor 12", 64],
-  ["Demo Investor 13", 61],
-  ["Demo Investor 14", 58],
-  ["Demo Investor 15", 55],
+const fallbackMatches = [
+  ["Early Stage Technology Fund", 98],
+  ["North America Seed Partners", 94],
+  ["Enterprise Software Ventures", 91],
+  ["Founder First Capital", 88],
+  ["Growth Technology Partners", 85],
+  ["Innovation Seed Fund", 82],
+  ["B2B Venture Partners", 79],
+  ["Canadian Startup Capital", 76],
+  ["Applied AI Ventures", 73],
+  ["Digital Economy Fund", 70],
+  ["Scaleup Capital Partners", 67],
+  ["Technology Growth Fund", 64],
+  ["Future Markets Ventures", 61],
+  ["Operator Angel Network", 58],
+  ["Emerging Companies Fund", 55],
 ].map(([entityName, finalScore], index) => ({
   investor_id: index + 1,
   entity_name: entityName,
   final_score: finalScore,
-})) : [];
+  match_reason: "Fallback match shown because the backend returned no ranked investors.",
+}));
 
 const relationshipReadiness = [
   { label: "LinkedIn connections", value: "Not linked", state: "Action needed" },
@@ -425,7 +426,7 @@ export default function FounderIntakeForm() {
   const [missingFields, setMissingFields] = useState([]);
   const [matches, setMatches] = useState([]);
   const [matchingLoading, setMatchingLoading] = useState(false);
-  const [matchingSource, setMatchingSource] = useState("demo");
+  const [matchingSource, setMatchingSource] = useState("fallback");
   const [relationshipInsights, setRelationshipInsights] = useState([]);
   const [selectedRelationshipIndex, setSelectedRelationshipIndex] = useState(0);
   const [selectedWarmPathIndex, setSelectedWarmPathIndex] = useState(0);
@@ -567,6 +568,7 @@ export default function FounderIntakeForm() {
         const matchData = await apiFetch(`/match-investors/${submitData.startup_id}`, {
           method: "POST",
         });
+        console.info("[Matching] Backend response", matchData);
 
         const topInvestors = (matchData.top_investors || []).slice(0, 15);
 
@@ -579,7 +581,7 @@ export default function FounderIntakeForm() {
               relationshipIntelligence: investor.relationshipIntelligence || investor.relationship_intelligence,
               relationshipPaths: investor.relationshipPaths || investor.relationship_paths || investor.paths,
             }))
-          : developmentDemoMatches;
+          : fallbackMatches;
         const normalizedRelationships = normalizeRelationshipIntelligence(matchData, normalizedMatches);
 
         const remainingDelay = Math.max(0, 1400 - (Date.now() - startedAt));
@@ -591,20 +593,21 @@ export default function FounderIntakeForm() {
           setSelectedWarmPathIndex(0);
           setSelectedWarmIntro(normalizedRelationships[0]?.warmPaths?.[0] || null);
           setSelectedInvestor(normalizedRelationships[0]?.investorName || null);
-          setMatchingSource(topInvestors.length ? "backend" : "demo");
+          setMatchingSource(topInvestors.length ? "backend" : "fallback");
           setMatchingLoading(false);
         }, remainingDelay);
       } catch (error) {
+        console.error("[Matching] Backend request failed; showing fallback matches", error);
         const remainingDelay = Math.max(0, 1400 - (Date.now() - startedAt));
         window.setTimeout(() => {
           if (cancelled) return;
-          setMatches(developmentDemoMatches);
+          setMatches(fallbackMatches);
           setRelationshipInsights([]);
           setSelectedRelationshipIndex(0);
           setSelectedWarmPathIndex(0);
           setSelectedWarmIntro(null);
           setSelectedInvestor(null);
-          setMatchingSource("demo");
+          setMatchingSource("fallback");
           setMatchingLoading(false);
         }, remainingDelay);
       }
@@ -732,7 +735,7 @@ export default function FounderIntakeForm() {
   ];
 
   const dashboardUserName = formData.name || "Founder";
-  const displayedMatches = matches.length ? matches : developmentDemoMatches;
+  const displayedMatches = matches.length ? matches : fallbackMatches;
   const topInvestorCards = displayedMatches.slice(0, 3).map((match) => {
     const score = Math.round(match.final_score || match.final_score_scaled || 0);
     const location = [match.location_city, match.hq_country].filter(Boolean).join(", ");
@@ -1290,7 +1293,7 @@ export default function FounderIntakeForm() {
               <div>
                 <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
                   {matchingLoading ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
-                  {matchingLoading ? "Refreshing investor graph" : matchingSource === "backend" ? "Live ranking model" : "Demo ranking model"}
+                  {matchingLoading ? "Refreshing investor graph" : matchingSource === "backend" ? "Live ranking model" : "Fallback ranking"}
                 </div>
                 <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
                   {timeGreeting}, {dashboardUserName} 👋
@@ -1867,7 +1870,7 @@ function MatchesPanel({ matches, matchingLoading, matchingSource }) {
         </div>
         <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
           {matchingLoading ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
-          {matchingLoading ? "Loading" : matchingSource === "backend" ? "Live results" : "Demo results"}
+          {matchingLoading ? "Loading" : matchingSource === "backend" ? "Live results" : "Fallback results"}
         </span>
       </div>
 

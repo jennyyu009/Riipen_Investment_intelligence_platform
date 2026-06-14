@@ -1,16 +1,25 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL;
 
 export async function apiFetch(path: string, options?: RequestInit) {
   if (!API_BASE_URL) {
-    throw new Error("Missing VITE_API_BASE_URL");
+    console.error("[API] Missing VITE_API_BASE_URL or VITE_API_URL");
+    throw new Error("Missing deployed backend API URL");
   }
 
-  const response = await fetch(`${API_BASE_URL.replace(/\/$/, "")}${path}`, options);
+  const url = `${API_BASE_URL.replace(/\/$/, "")}${path}`;
+  console.info(`[API] ${options?.method || "GET"} ${url}`);
+
+  const response = await fetch(url, options);
 
   if (!response.ok) {
+    console.error(`[API] ${response.status} ${url}`);
     throw new Error(`API request failed: ${response.status}`);
   }
 
   const text = await response.text();
-  return text ? JSON.parse(text) : null;
+  const data = text ? JSON.parse(text) : null;
+  console.info(`[API] Response ${path}`, data);
+  return data;
 }

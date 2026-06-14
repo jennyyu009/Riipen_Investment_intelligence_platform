@@ -11,3 +11,5 @@ services:
         value: https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+
       - key: DATABASE_URL
         sync: false
+      - key: LIGHTWEIGHT_DEPLOYMENT
+        value: "true"

@@ -1,24 +1,29 @@
 import os
 import re
+import logging
 
 from fastapi import FastAPI, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 try:
-    from .database import Base, engine, get_db
+    from .database import Base, engine, ensure_database_schema, get_db
     from .models import Founder, Startup, Investor, InvestorMatch
     from .schemas import FounderStartupCreate
     from .matching_score.api import router as matching_score_router
     from .relationship_intelligence.api import router as relationship_intelligence_router
+    from .seed_investors import ensure_investors_seeded
 except ImportError:
-    from database import Base, engine, get_db
+    from database import Base, engine, ensure_database_schema, get_db
     from models import Founder, Startup, Investor, InvestorMatch
     from schemas import FounderStartupCreate
     from matching_score.api import router as matching_score_router
     from relationship_intelligence.api import router as relationship_intelligence_router
+    from seed_investors import ensure_investors_seeded
 
 Base.metadata.create_all(bind=engine)
+ensure_database_schema()
+logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI(title="Latte Backend")
 DEFAULT_FRONTEND_ORIGINS = [
@@ -46,6 +51,12 @@ app.add_middleware(
 
 app.include_router(matching_score_router)
 app.include_router(relationship_intelligence_router)
+
+
+@app.on_event("startup")
+def seed_empty_investor_database():
+    investor_count = ensure_investors_seeded()
+    logger.info("Backend startup completed with %s investors loaded", investor_count)
 
 
 @app.middleware("http")
@@ -77,8 +88,11 @@ async def add_private_network_access_header(request, call_next):
 
 
 @app.get("/")
-def home():
-    return {"message": "Latte backend is running"}
+def home(db: Session = Depends(get_db)):
+    return {
+        "message": "Latte backend is running",
+        "investor_count": db.query(Investor).count(),
+    }
 
 
 @app.post("/submit-founder")

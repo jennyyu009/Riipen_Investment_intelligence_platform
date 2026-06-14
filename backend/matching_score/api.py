@@ -1,16 +1,19 @@
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 try:
     from ..database import get_db
+    from ..matching import calculate_investor_score
     from ..models import Founder, Investor, InvestorMatch, Startup
-    from .scoring import calculate_investor_score
 except ImportError:
     from database import get_db
+    from matching import calculate_investor_score
     from models import Founder, Investor, InvestorMatch, Startup
-    from matching_score.scoring import calculate_investor_score
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 
 @router.post("/match-investors/{startup_id}")
@@ -21,12 +24,17 @@ def match_investors(startup_id: int, db: Session = Depends(get_db)):
         return {"error": "Startup not found"}
 
     investors = db.query(Investor).all()
+    logger.info(
+        "Matching startup_id=%s against %s investors",
+        startup_id,
+        len(investors),
+    )
     results = []
     founder = db.query(Founder).filter(Founder.id == startup.founder_id).first()
 
     for investor in investors:
         score_result = calculate_investor_score(startup, investor, founder=founder)
-        final_score = score_result["final_score"]
+        score_raw = score_result.get("final_score_raw", score_result.get("final_score", 0))
 
         reason = (
             f"Matched with {investor.entity_name} based on "
@@ -37,7 +45,7 @@ def match_investors(startup_id: int, db: Session = Depends(get_db)):
             founder_id=startup.founder_id,
             startup_id=startup.id,
             investor_id=investor.id,
-            final_score=final_score,
+            final_score=score_result["final_score"],
             industry_score=score_result["industry_score"],
             stage_score=score_result.get("stage_score", 0),
             location_score=score_result["location_score"],
@@ -62,7 +70,7 @@ def match_investors(startup_id: int, db: Session = Depends(get_db)):
             "contact_2_name": investor.contact_2_name,
             "contact_2_designation": investor.contact_2_designation,
             "contact_2_linkedin": investor.contact_2_linkedin,
-            "final_score_raw": final_score,
+            "final_score_raw": score_raw,
             "industry_score": score_result["industry_score"],
             "stage_score": score_result.get("stage_score", 0),
             "location_score": score_result["location_score"],
@@ -80,6 +88,12 @@ def match_investors(startup_id: int, db: Session = Depends(get_db)):
         raw = r["final_score_raw"]
         r["final_score_scaled"] = round(100 * raw / top_score) if top_score else 0
         r["final_score"] = r["final_score_scaled"]
+
+    logger.info(
+        "Matching startup_id=%s returned %s top investors",
+        startup_id,
+        len(top),
+    )
 
     return {
         "startup_id": startup.id,
