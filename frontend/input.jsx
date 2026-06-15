@@ -1,23 +1,31 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Activity,
   ArrowRight,
   BarChart3,
   Building2,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   CircleDollarSign,
   Copy,
+  Download,
   ExternalLink,
   FileText,
+  Filter,
+  Globe2,
   Handshake,
   Home,
+  Lightbulb,
   Loader2,
+  LockKeyhole,
   LogOut,
   Link,
   Mail,
   MessageCircle,
   Network,
   PieChart,
+  Search,
   Send,
   Settings,
   ShieldCheck,
@@ -443,6 +451,7 @@ export default function FounderIntakeForm() {
   const [deckBoost, setDeckBoost] = useState(0);
   const [deckError, setDeckError] = useState("");
   const [activePanel, setActivePanel] = useState(null);
+  const [dashboardView, setDashboardView] = useState("home");
   const [timeGreeting, setTimeGreeting] = useState(getTimeBasedGreeting);
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState([
@@ -851,6 +860,47 @@ export default function FounderIntakeForm() {
     setSelectedInvestor(selectedMatch?.investorName || nextWarmPath?.investorName || null);
     setGeneratedEmail({ to: "", introRequestTo: "", subject: "", body: "" });
     setEmailNotice("");
+  };
+
+  const openInvestorWorkflow = (match, workflow) => {
+    const relationshipIndex = relationshipInsights.findIndex((insight) => insight.investorName === match.entity_name);
+    if (relationshipIndex >= 0) {
+      selectWarmIntroByIndex(relationshipIndex);
+    } else {
+      setSelectedInvestor(match.entity_name || null);
+      setSelectedWarmIntro(null);
+    }
+
+    if (workflow === "relationship") {
+      openPanel(dashboardPanels[2]);
+      return;
+    }
+    if (workflow === "outreach") {
+      openPanel({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." });
+      return;
+    }
+
+    const score = Math.round(match.final_score || match.final_score_scaled || 0);
+    openPanel({
+      id: "investor",
+      title: match.entity_name || "Investor details",
+      investor: {
+        name: match.entity_name || "Investor",
+        score,
+        label: getMatchLabel(score),
+        initials: getInvestorInitials(match.entity_name),
+        bullets: [
+          match.match_reason || "Matched from the current founder and startup profile.",
+          [match.investor_type, match.location_city, match.hq_country].filter(Boolean).join(" / ") || "Investor profile details unavailable.",
+          `Stage score: ${Math.round(match.stage_score || 0)} / Industry score: ${Math.round(match.industry_score || 0)}`,
+        ],
+        fundraisingScore: match.fundraising_score,
+        linkedinMatches: match.linkedin_matches,
+        linkedinMatchedCount: match.linkedin_matched_count || 0,
+        linkedinContribution: match.linkedin_contribution || 0,
+        relationshipPaths: match.relationshipPaths || match.relationship_paths || match.paths || [],
+      },
+    });
   };
 
   const getCurrentOutreachDraft = () => {
@@ -1296,120 +1346,98 @@ export default function FounderIntakeForm() {
             userName={dashboardUserName}
             onLogout={handleLogout}
             onProfileClick={() => openPanel({ id: "profile", title: "Profile", subtitle: "Submitted form table." })}
-            onMatchesClick={() => openPanel(dashboardPanels[0])}
+            activeView={dashboardView}
+            onViewChange={setDashboardView}
             onPanelClick={openPanel}
             panels={dashboardPanels}
           />
 
-          <main className="mx-auto w-full max-w-[1520px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-            <header className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-6 xl:flex-row xl:items-center xl:justify-between">
-              <div>
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
-                  {matchingLoading ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
-                  {matchingLoading ? "Refreshing investor graph" : matchingSource === "backend" ? "Live ranking model" : "Fallback ranking"}
-                </div>
-                <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                  {timeGreeting}, {dashboardUserName} 👋
-                </h1>
-                <p className="mt-2 text-base text-slate-500">
-                  Here&apos;s your fundraising intelligence overview.
-                </p>
-              </div>
-              <label className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700">
-                <Upload size={17} />
-                Upload New Deck
-                <input type="file" accept="application/pdf,.pdf" onChange={handlePitchDeckChange} className="hidden" />
-              </label>
-            </header>
-
-            <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {kpiCards.map((card) => (
-                <KPICard key={card.label} {...card} />
-              ))}
-            </section>
-
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="space-y-6">
-                <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                  <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h2 className="text-lg font-semibold text-slate-950">Top 3 Recommended Investors</h2>
-                      <p className="mt-1 text-sm text-slate-500">Prioritized by fit, relationship quality, and thesis overlap.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => openPanel(dashboardPanels[0])}
-                      className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-800"
-                    >
-                      View all 15 matches <ArrowRight size={15} />
-                    </button>
+          {dashboardView === "my-investors" ? (
+            <InvestorTableWorkspace
+              title="My Investors"
+              matches={displayedMatches}
+              matchingLoading={matchingLoading}
+              relationshipInsights={relationshipInsights}
+              onOpenWorkflow={openInvestorWorkflow}
+              onSettings={() => openPanel({ id: "settings", title: "Settings", subtitle: "Investor table preferences." })}
+            />
+          ) : dashboardView === "matching" ? (
+            <SmartMatchingPage
+              formData={formData}
+              matches={displayedMatches}
+              matchingLoading={matchingLoading}
+              matchingSource={matchingSource}
+              relationshipInsights={relationshipInsights}
+              onOpenWorkflow={openInvestorWorkflow}
+              onStart={() => setDashboardView("my-investors")}
+            />
+          ) : (
+            <main className="mx-auto w-full max-w-[1520px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+              <header className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-6 xl:flex-row xl:items-center xl:justify-between">
+                <div>
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
+                    {matchingLoading ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
+                    {matchingLoading ? "Refreshing investor graph" : matchingSource === "backend" ? "Live ranking model" : "Fallback ranking"}
                   </div>
+                  <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                    {timeGreeting}, {dashboardUserName}
+                  </h1>
+                  <p className="mt-2 text-base text-slate-500">Here&apos;s your fundraising intelligence overview.</p>
+                </div>
+                <label className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition hover:bg-blue-700">
+                  <Upload size={17} />
+                  Upload New Deck
+                  <input type="file" accept="application/pdf,.pdf" onChange={handlePitchDeckChange} className="hidden" />
+                </label>
+              </header>
 
-                  {topInvestorCards.length > 0 ? (
+              <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {kpiCards.map((card) => <KPICard key={card.label} {...card} />)}
+              </section>
+
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="space-y-6">
+                  <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h2 className="text-lg font-semibold text-slate-950">Top 3 Recommended Investors</h2>
+                        <p className="mt-1 text-sm text-slate-500">Prioritized by fit, relationship quality, and thesis overlap.</p>
+                      </div>
+                      <button type="button" onClick={() => setDashboardView("my-investors")} className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:text-blue-800">
+                        View all matches <ArrowRight size={15} />
+                      </button>
+                    </div>
                     <div className="grid gap-4 2xl:grid-cols-3">
                       {topInvestorCards.map((investor, index) => (
-                        <InvestorCard
-                          key={investor.name}
-                          investor={investor}
-                          rank={index + 1}
-                          onViewDetails={() => openPanel({ id: "investor", title: investor.name, investor })}
-                        />
+                        <InvestorCard key={investor.name} investor={investor} rank={index + 1} onViewDetails={() => openPanel({ id: "investor", title: investor.name, investor })} />
                       ))}
                     </div>
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-600">
-                      No investor matches returned yet.
-                    </div>
-                  )}
-                </section>
-
-                <section className="grid gap-4 lg:grid-cols-3">
-                  <AnalyticsCard title="Matching Overview" icon={<PieChart size={18} />}>
-                    <div className="flex items-center gap-5">
-                      <div className="relative h-28 w-28 shrink-0 rounded-full bg-[conic-gradient(#2563eb_0_62%,#22c55e_62%_84%,#e2e8f0_84%_100%)]">
-                        <div className="absolute inset-4 flex items-center justify-center rounded-full bg-white">
-                          <span className="text-2xl font-semibold text-slate-950">74%</span>
+                  </section>
+                  <section className="grid gap-4 lg:grid-cols-3">
+                    <AnalyticsCard title="Matching Overview" icon={<PieChart size={18} />}>
+                      <div className="flex items-center gap-5">
+                        <div className="relative h-28 w-28 shrink-0 rounded-full bg-[conic-gradient(#2563eb_0_62%,#22c55e_62%_84%,#e2e8f0_84%_100%)]">
+                          <div className="absolute inset-4 flex items-center justify-center rounded-full bg-white"><span className="text-2xl font-semibold text-slate-950">74%</span></div>
+                        </div>
+                        <div className="space-y-3 text-sm">
+                          <LegendDot color="bg-blue-600" label="Excellent / Strong" value="62%" />
+                          <LegendDot color="bg-emerald-500" label="Good" value="22%" />
+                          <LegendDot color="bg-slate-300" label="Needs review" value="16%" />
                         </div>
                       </div>
-                      <div className="space-y-3 text-sm">
-                        <LegendDot color="bg-blue-600" label="Excellent / Strong" value="62%" />
-                        <LegendDot color="bg-emerald-500" label="Good" value="22%" />
-                        <LegendDot color="bg-slate-300" label="Needs review" value="16%" />
-                      </div>
-                    </div>
-                  </AnalyticsCard>
-
-                  <AnalyticsCard title="Top Sectors" icon={<BarChart3 size={18} />}>
-                    <div className="space-y-4">
-                      {sectorBars.map((sector) => (
-                        <HorizontalMetric key={sector.label} {...sector} />
-                      ))}
-                    </div>
-                  </AnalyticsCard>
-
-                  <AnalyticsCard title="Network Strength" icon={<Network size={18} />}>
-                    <div className="space-y-4">
-                      {networkBars.map((bar) => (
-                        <HorizontalMetric key={bar.label} {...bar} />
-                      ))}
-                    </div>
-                  </AnalyticsCard>
-                </section>
-
-                <AIInsightBanner />
+                    </AnalyticsCard>
+                    <AnalyticsCard title="Top Sectors" icon={<BarChart3 size={18} />}><div className="space-y-4">{sectorBars.map((sector) => <HorizontalMetric key={sector.label} {...sector} />)}</div></AnalyticsCard>
+                    <AnalyticsCard title="Network Strength" icon={<Network size={18} />}><div className="space-y-4">{networkBars.map((bar) => <HorizontalMetric key={bar.label} {...bar} />)}</div></AnalyticsCard>
+                  </section>
+                  <AIInsightBanner />
+                </div>
+                <aside className="space-y-4 xl:sticky xl:top-8 xl:self-start">
+                  <PitchDeckStatus deckBoost={deckBoost} pitchDeck={formData.pitchDeck} deckError={deckError} onPitchDeckChange={handlePitchDeckChange} />
+                  <RelationshipReadiness items={relationshipReadiness} />
+                </aside>
               </div>
-
-              <aside className="space-y-4 xl:sticky xl:top-8 xl:self-start">
-                <PitchDeckStatus
-                  deckBoost={deckBoost}
-                  pitchDeck={formData.pitchDeck}
-                  deckError={deckError}
-                  onPitchDeckChange={handlePitchDeckChange}
-                />
-                <RelationshipReadiness items={relationshipReadiness} />
-              </aside>
-            </div>
-          </main>
+            </main>
+          )}
 
           {activePanel && (
             <DashboardDrawer
@@ -1455,75 +1483,307 @@ export default function FounderIntakeForm() {
   );
 }
 
-function Sidebar({ userName, onLogout, onProfileClick, onMatchesClick, onPanelClick, panels }) {
-  const navItems = [
-    { label: "Dashboard", icon: <Home size={18} />, action: () => window.scrollTo({ top: 0, behavior: "smooth" }) },
-    { label: "Matches", icon: <Target size={18} />, action: onMatchesClick },
-    {
-      label: "Investor Discovery District",
-      icon: <Building2 size={18} />,
-      action: () =>
-        onPanelClick({
-          id: "investor-discovery-district",
-          title: "Investor Discovery District",
-          subtitle: "Investor discovery workspace.",
-        }),
-    },
-    { label: "Network", icon: <Network size={18} />, action: () => onPanelClick(panels[2]) },
-    { label: "Outreach", icon: <Send size={18} />, action: () => onPanelClick({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." }) },
-    { label: "Settings", icon: <Settings size={18} />, action: () => onPanelClick({ id: "settings", title: "Settings", subtitle: "Account and dashboard preferences." }) },
-  ];
+function Sidebar({ userName, onLogout, onProfileClick, activeView, onViewChange, onPanelClick, panels }) {
+  const [openSections, setOpenSections] = useState({ find: true, tools: true });
+  const toggleSection = (section) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+  const itemClass = (active) =>
+    `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
+      active ? "bg-white/15 text-white shadow-sm ring-1 ring-white/10" : "text-slate-300 hover:bg-white/10 hover:text-white"
+    }`;
 
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col bg-[#07182f] px-4 py-5 text-white lg:flex">
-        <nav className="space-y-1 pt-1">
-          {navItems.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              onClick={item.action}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${
-                item.label === "Dashboard"
-                  ? "bg-white/10 text-white shadow-sm"
-                  : "text-slate-300 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </button>
-          ))}
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col overflow-y-auto border-r border-white/10 bg-[#07182f] px-4 py-5 text-white lg:flex">
+        <div className="mb-7 flex items-center gap-3 px-2">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500 text-white shadow-lg shadow-blue-950/30">
+            <Network size={23} />
+          </div>
+          <div>
+            <p className="text-xl font-bold tracking-tight">InvestorOS</p>
+            <p className="text-xs text-slate-400">Founder intelligence</p>
+          </div>
+        </div>
+
+        <nav className="space-y-1">
+          <button type="button" onClick={() => onViewChange("home")} className={itemClass(activeView === "home")}>
+            <Home size={18} /> Home
+          </button>
+          <button type="button" onClick={() => onViewChange("my-investors")} className={itemClass(activeView === "my-investors")}>
+            <UsersRound size={18} /> My Investors
+          </button>
+
+          <button type="button" onClick={() => toggleSection("find")} className="mt-5 flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+            Find Investors
+            {openSections.find ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          </button>
+          {openSections.find && (
+            <div className="space-y-1">
+              <button type="button" onClick={() => onViewChange("matching")} className={itemClass(activeView === "matching")}><Target size={18} /> Matching</button>
+              <button type="button" onClick={() => onPanelClick(panels[2])} className={itemClass(false)}><Network size={18} /> Network</button>
+              <button type="button" onClick={() => onPanelClick({ id: "investor-discovery-district", title: "Investor Discovery District", subtitle: "Investor discovery workspace." })} className={itemClass(false)}><Building2 size={18} /> Investor Discovery District</button>
+              <button type="button" onClick={() => onPanelClick({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." })} className={itemClass(false)}><Send size={18} /> Outreach</button>
+            </div>
+          )}
+
+          <button type="button" onClick={() => toggleSection("tools")} className="mt-5 flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+            Other Tools
+            {openSections.tools ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          </button>
+          {openSections.tools && (
+            <div className="space-y-1">
+              <button type="button" onClick={() => onPanelClick(panels[1])} className={itemClass(false)}><FileText size={18} /> Pitch Deck Analysis</button>
+              <button type="button" onClick={() => onViewChange("my-investors")} className={itemClass(false)}><TableProperties size={18} /> Investors Shortlist</button>
+              <button type="button" onClick={() => onPanelClick({ id: "ai-insight", title: "AI Insight", subtitle: "Fundraising intelligence workspace." })} className={itemClass(false)}><Lightbulb size={18} /> AI Insight</button>
+            </div>
+          )}
         </nav>
 
-        <div className="mt-auto rounded-lg border border-white/10 bg-white/10 p-3">
-          <button type="button" onClick={onProfileClick} className="flex w-full items-center gap-3 text-left">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-sm font-bold text-[#07182f]">
-              {userName.charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{userName}</p>
-              <p className="text-xs text-slate-400">Founder account</p>
-            </div>
-          </button>
-          <button type="button" onClick={onLogout} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white">
-            <LogOut size={14} />
-            Log out
-          </button>
+        <div className="mt-auto pt-6">
+          <div className="rounded-xl border border-white/10 bg-white/[0.07] p-3">
+            <button type="button" onClick={onProfileClick} className="flex w-full items-center gap-3 text-left">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500 text-sm font-bold text-white">{userName.charAt(0).toUpperCase()}</div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{userName}</p>
+                <p className="text-xs text-slate-400">Founder account</p>
+              </div>
+            </button>
+            <button type="button" onClick={onLogout} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white"><LogOut size={14} /> Log out</button>
+          </div>
         </div>
       </aside>
 
-      <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+      <div className="sticky top-0 z-30 border-b border-slate-200 bg-[#07182f] px-4 py-3 text-white lg:hidden">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-slate-950">Dashboard</p>
-            <p className="text-xs text-slate-500">Investor intelligence</p>
+          <p className="font-semibold">InvestorOS</p>
+          <div className="flex gap-1">
+            <button type="button" onClick={() => onViewChange("home")} className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10">Home</button>
+            <button type="button" onClick={() => onViewChange("my-investors")} className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10">Investors</button>
+            <button type="button" onClick={() => onViewChange("matching")} className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10">Matching</button>
           </div>
-          <button type="button" onClick={onMatchesClick} className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
-            Matches
-          </button>
         </div>
       </div>
     </>
+  );
+}
+
+const investorValue = (investor, keys) => keys.map((key) => investor?.[key]).find(hasValue);
+const investorList = (investor, keys) => {
+  const value = investorValue(investor, keys);
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return String(value || "").split(/[,;|]/).map((item) => item.trim()).filter(Boolean);
+};
+const scoreLevel = (score) => {
+  const numericScore = Number(score || 0);
+  if (numericScore >= 90) return "Highest";
+  if (numericScore >= 75) return "High";
+  if (numericScore >= 50) return "Medium";
+  return "Low";
+};
+
+function MatchPill({ score }) {
+  if (!hasValue(score)) return <LockedValue />;
+  const level = scoreLevel(score);
+  const styles = {
+    Highest: "border-violet-200 bg-violet-50 text-violet-700",
+    High: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    Medium: "border-amber-200 bg-amber-50 text-amber-700",
+    Low: "border-slate-200 bg-slate-50 text-slate-600",
+  };
+  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${styles[level]}`}>{level}</span>;
+}
+
+function LockedValue({ value, children, className = "" }) {
+  if (hasValue(value)) return <span className={className} title={String(value)}>{children || value}</span>;
+  return <span className={`inline-flex items-center gap-1 text-xs text-slate-400 ${className}`} title="Not provided by the backend"><LockKeyhole size={12} /> Unavailable</span>;
+}
+
+function InvestorTableWorkspace({ title, matches, matchingLoading, relationshipInsights, onOpenWorkflow, onSettings }) {
+  const [query, setQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectedRows, setSelectedRows] = useState([]);
+  const [notice, setNotice] = useState("");
+  const [filters, setFilters] = useState({ stage: [], location: [], type: [], focus: [], connection: [], saved: [] });
+
+  const options = useMemo(() => ({
+    stage: [...new Set(matches.flatMap((item) => investorList(item, ["focus_stages", "stages"])))],
+    location: [...new Set(matches.flatMap((item) => [item.hq_country, item.location_city].filter(Boolean)))],
+    type: [...new Set(matches.map((item) => item.investor_type).filter(Boolean))],
+    focus: [...new Set(matches.flatMap((item) => investorList(item, ["focus_industries", "industries"])))],
+    connection: ["Warm intro available", "No warm intro path"],
+    saved: ["Selected investors"],
+  }), [matches]);
+
+  const hasWarmIntro = (match) => relationshipInsights.some((insight) => insight.investorName === match.entity_name && insight.warmPaths?.length);
+  const filteredMatches = useMemo(() => matches.filter((match) => {
+    const searchable = [
+      match.entity_name, match.investor_type, match.hq_country, match.location_city, match.description,
+      ...investorList(match, ["focus_industries", "industries", "focus_stages", "stages", "focus_geographies"]),
+    ].filter(Boolean).join(" ").toLowerCase();
+    if (query && !searchable.includes(query.toLowerCase())) return false;
+    if (filters.stage.length && !filters.stage.some((value) => investorList(match, ["focus_stages", "stages"]).includes(value))) return false;
+    if (filters.location.length && !filters.location.includes(match.hq_country) && !filters.location.includes(match.location_city)) return false;
+    if (filters.type.length && !filters.type.includes(match.investor_type)) return false;
+    if (filters.focus.length && !filters.focus.some((value) => investorList(match, ["focus_industries", "industries"]).includes(value))) return false;
+    if (filters.connection.includes("Warm intro available") && !hasWarmIntro(match)) return false;
+    if (filters.connection.includes("No warm intro path") && hasWarmIntro(match)) return false;
+    if (filters.saved.length && !selectedRows.includes(match.investor_id)) return false;
+    return true;
+  }), [matches, query, filters, selectedRows, relationshipInsights]);
+
+  const toggleRow = (id) => setSelectedRows((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const downloadResults = () => {
+    const columns = ["Name", "Email", "Top Industry Match", "Top Stage Match", "Top Country Match", "Country", "City"];
+    const rows = filteredMatches.map((match) => [
+      match.entity_name,
+      investorValue(match, ["contact_1_email", "contact_2_email", "email"]) || "",
+      match.industry_score || "",
+      match.stage_score || "",
+      match.location_score || "",
+      match.hq_country || "",
+      match.location_city || "",
+    ]);
+    const csv = [columns, ...rows].map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "investor-results.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <main className="min-h-screen bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Investor workspace</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">{title}</h1>
+          <p className="mt-1 text-sm text-slate-500">{filteredMatches.length} investors shown from the current matching results.</p>
+        </div>
+        {notice && <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">{notice}</p>}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3">
+          <button type="button" onClick={() => setFiltersOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Filter size={16} /> Filters</button>
+          <label className="flex h-10 min-w-[240px] flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm text-slate-500 sm:max-w-md">
+            <Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search in results..." className="w-full bg-transparent outline-none" />
+          </label>
+          <button type="button" onClick={onSettings} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Settings size={16} /> Settings</button>
+          <div className="sm:ml-auto flex gap-2">
+            <button type="button" onClick={() => setNotice("Email availability is based on the current backend response.")} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Mail size={16} /> Find emails</button>
+            <button type="button" onClick={downloadResults} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700"><Download size={16} /> Download</button>
+          </div>
+        </div>
+
+        <div className="investor-table-scroll overflow-x-auto">
+          <table className="min-w-[2400px] table-fixed text-left text-sm">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="w-12 px-4 py-4"><input type="checkbox" checked={filteredMatches.length > 0 && filteredMatches.every((match) => selectedRows.includes(match.investor_id))} onChange={() => setSelectedRows(filteredMatches.every((match) => selectedRows.includes(match.investor_id)) ? [] : filteredMatches.map((match) => match.investor_id))} /></th>
+                {["Name", "Email", "Links", "Top Industry Match", "Top Stage Match", "Top Country Match", "Top-3 Industries", "Top-3 Stages", "Top-3 Countries", "Categories", "Descriptions", "Country", "City", "Region", "Actions"].map((column) => (
+                  <th key={column} className={`${column === "Descriptions" ? "w-80" : column === "Actions" ? "w-72" : "w-44"} px-4 py-4`}>{column}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {matchingLoading ? (
+                <tr><td colSpan="16" className="px-6 py-16 text-center text-slate-500"><Loader2 className="mx-auto mb-3 animate-spin text-blue-600" /> Loading investor results...</td></tr>
+              ) : filteredMatches.map((match) => {
+                const email = investorValue(match, ["contact_1_email", "contact_2_email", "email"]);
+                const linkedin = investorValue(match, ["company_linkedin", "contact_1_linkedin", "linkedin"]);
+                const twitter = investorValue(match, ["twitter", "twitter_url", "x_url"]);
+                const website = investorValue(match, ["website", "website_url"]);
+                const industries = investorList(match, ["focus_industries", "industries"]).slice(0, 3);
+                const stages = investorList(match, ["focus_stages", "stages"]).slice(0, 3);
+                const countries = investorList(match, ["focus_geographies", "countries"]).slice(0, 3);
+                const warmIntro = hasWarmIntro(match);
+                return (
+                  <tr key={match.investor_id || match.entity_name} className="align-middle hover:bg-blue-50/30">
+                    <td className="px-4 py-4"><input type="checkbox" checked={selectedRows.includes(match.investor_id)} onChange={() => toggleRow(match.investor_id)} /></td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-xs font-bold text-blue-700">{getInvestorInitials(match.entity_name)}</div>
+                        <div className="min-w-0"><p className="truncate font-semibold text-slate-950">{match.entity_name}</p><p className="truncate text-xs text-slate-500">{match.investor_type || "Investor"}</p>{warmIntro && <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Warm intro available</span>}</div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">{email ? <a href={`mailto:${email}`} className="font-medium text-blue-700 hover:underline">{email}</a> : <button type="button" onClick={() => setNotice(`No email was provided for ${match.entity_name}.`)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600"><LockKeyhole size={12} /> Find email</button>}</td>
+                    <td className="px-4 py-4"><div className="flex gap-2">{linkedin && <a href={linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn" className="text-blue-700"><Link size={17} /></a>}{twitter && <a href={twitter} target="_blank" rel="noreferrer" aria-label="Twitter or X" className="text-slate-700"><MessageCircle size={17} /></a>}{website && <a href={website} target="_blank" rel="noreferrer" aria-label="Website" className="text-slate-700"><Globe2 size={17} /></a>}{!linkedin && !twitter && !website && <LockedValue />}</div></td>
+                    <td className="px-4 py-4"><MatchPill score={match.industry_score} /></td>
+                    <td className="px-4 py-4"><MatchPill score={match.stage_score} /></td>
+                    <td className="px-4 py-4"><MatchPill score={match.location_score} /></td>
+                    <td className="truncate px-4 py-4" title={industries.join(", ")}><LockedValue value={industries.join(", ")}>{industries.join(", ")}</LockedValue></td>
+                    <td className="truncate px-4 py-4" title={stages.join(", ")}><LockedValue value={stages.join(", ")}>{stages.join(", ")}</LockedValue></td>
+                    <td className="truncate px-4 py-4" title={countries.join(", ")}><LockedValue value={countries.join(", ")}>{countries.join(", ")}</LockedValue></td>
+                    <td className="truncate px-4 py-4"><LockedValue value={match.investor_type}>{match.investor_type}</LockedValue></td>
+                    <td className="truncate px-4 py-4" title={match.description || match.match_reason}><LockedValue value={match.description || match.match_reason}>{match.description || match.match_reason}</LockedValue></td>
+                    <td className="truncate px-4 py-4"><LockedValue value={match.hq_country}>{match.hq_country}</LockedValue></td>
+                    <td className="truncate px-4 py-4"><LockedValue value={match.location_city}>{match.location_city}</LockedValue></td>
+                    <td className="truncate px-4 py-4"><LockedValue value={investorValue(match, ["region", "location_region", "hq_region"])}>{investorValue(match, ["region", "location_region", "hq_region"])}</LockedValue></td>
+                    <td className="px-4 py-4"><div className="flex gap-1.5"><button type="button" onClick={() => onOpenWorkflow(match, "details")} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700">Details</button>{warmIntro ? <button type="button" onClick={() => onOpenWorkflow(match, "relationship")} className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700">Warm path</button> : <button type="button" disabled title="No relationship path provided by the backend" className="cursor-not-allowed rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-400">No path</button>}<button type="button" onClick={() => onOpenWorkflow(match, "outreach")} className="rounded-lg bg-[#07182f] px-2.5 py-1.5 text-xs font-semibold text-white">Outreach</button></div></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {filtersOpen && <InvestorFilterPanel filters={filters} setFilters={setFilters} options={options} onClose={() => setFiltersOpen(false)} />}
+    </main>
+  );
+}
+
+function InvestorFilterPanel({ filters, setFilters, options, onClose }) {
+  const [expanded, setExpanded] = useState({ saved: true, stage: true, location: true, type: true, focus: true, connection: true });
+  const groups = [["saved", "Saved List"], ["stage", "Matching Stage"], ["location", "Location"], ["type", "Investor Type"], ["focus", "Investment Focus"], ["connection", "Connection Data"]];
+  const toggleFilter = (group, value) => setFilters((current) => ({ ...current, [group]: current[group].includes(value) ? current[group].filter((item) => item !== value) : [...current[group], value] }));
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-sm" onMouseDown={onClose}>
+      <aside className="ml-auto h-full w-full max-w-sm overflow-y-auto bg-white p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="mb-5 flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Refine results</p><h2 className="mt-1 text-xl font-semibold">Filters</h2></div><button type="button" onClick={onClose} className="rounded-lg bg-slate-100 p-2"><X size={18} /></button></div>
+        <div className="space-y-2">
+          {groups.map(([key, label]) => (
+            <section key={key} className="rounded-xl border border-slate-200">
+              <button type="button" onClick={() => setExpanded((current) => ({ ...current, [key]: !current[key] }))} className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-slate-800">{label}{expanded[key] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
+              {expanded[key] && <div className="space-y-2 border-t border-slate-100 px-4 py-3">{options[key].length ? options[key].map((option) => <label key={option} className="flex cursor-pointer items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={filters[key].includes(option)} onChange={() => toggleFilter(key, option)} />{option}</label>) : <p className="text-xs text-slate-400">No values provided by the backend.</p>}</div>}
+            </section>
+          ))}
+        </div>
+        <div className="mt-5 flex gap-2"><button type="button" onClick={() => setFilters({ stage: [], location: [], type: [], focus: [], connection: [], saved: [] })} className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold">Clear</button><button type="button" onClick={onClose} className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white">Show results</button></div>
+      </aside>
+    </div>
+  );
+}
+
+function SmartMatchingPage({ formData, matches, matchingLoading, matchingSource, relationshipInsights, onOpenWorkflow }) {
+  const [showResults, setShowResults] = useState(false);
+  if (showResults) return <InvestorTableWorkspace title="Matching Results" matches={matches} matchingLoading={matchingLoading} relationshipInsights={relationshipInsights} onOpenWorkflow={onOpenWorkflow} onSettings={() => {}} />;
+  const summary = [formData.industry.join(", ") || "Industry", formData.stage || "Stage", formData.location || "Country"].join(" / ");
+  const stages = [
+    ["Founder profile", "Core profile and fundraising preferences"],
+    ["Pitch deck enhanced", formData.pitchDeck ? "Pitch deck data included" : "Upload a deck to enhance"],
+    ["Website enhanced", formData.websiteUrl ? "Website data included" : "Add a website to enhance"],
+    ["Relationship intelligence", relationshipInsights.length ? "Connection paths included" : "Upload connections to enhance"],
+  ];
+  return (
+    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-8 lg:px-12">
+      <section className="mx-auto max-w-6xl rounded-3xl border border-blue-100 bg-gradient-to-br from-white to-blue-50 p-7 shadow-sm sm:p-10">
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 text-blue-600 ring-8 ring-blue-50"><CheckCircle2 size={42} /></div>
+        <h1 className="mt-8 text-4xl font-semibold tracking-tight text-[#07182f] sm:text-5xl">Smart Matching</h1>
+        <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">The system analyzes your founder profile, pitch deck, website data, investor database, and relationship intelligence to find the most relevant investors.</p>
+        <button type="button" onClick={() => setShowResults(true)} className="mt-7 inline-flex items-center gap-3 rounded-xl bg-blue-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700">Get started <ArrowRight size={17} /></button>
+        <div className="mt-9 grid gap-3 md:grid-cols-4">{stages.map(([label, detail], index) => <div key={label} className="rounded-2xl border border-blue-100 bg-white p-4"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{index + 1}</span><p className="mt-3 text-sm font-semibold text-slate-900">{label}</p><p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p></div>)}</div>
+      </section>
+      <section className="mx-auto mt-6 max-w-6xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between"><div><h2 className="font-semibold text-slate-950">Previous searches</h2><p className="mt-1 text-sm text-slate-500">Reopen your latest ranked investor list.</p></div><span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">{matchingSource === "backend" ? "Live results" : "Fallback results"}</span></div>
+        <div className="mt-5 grid gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_180px_160px_120px] md:items-center">
+          <div><p className="font-semibold text-slate-900">{summary}</p><p className="mt-1 text-xs text-slate-500">Industry / Stage / Country</p></div>
+          <div><p className="text-sm font-semibold text-slate-800">{new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date())}</p><p className="mt-1 text-xs text-slate-500">Created date</p></div>
+          <div><p className="text-sm font-semibold text-slate-800">{matches.length} matched investors</p><p className="mt-1 text-xs text-slate-500">Current result count</p></div>
+          <button type="button" onClick={() => setShowResults(true)} className="rounded-xl bg-[#07182f] px-4 py-2.5 text-sm font-semibold text-white">Open results</button>
+        </div>
+      </section>
+    </main>
   );
 }
 
