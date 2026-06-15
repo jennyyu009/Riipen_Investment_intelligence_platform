@@ -27,7 +27,6 @@ import {
   PieChart,
   Search,
   Send,
-  Settings,
   ShieldCheck,
   Sparkles,
   TableProperties,
@@ -919,6 +918,7 @@ export default function FounderIntakeForm() {
 
   const openInvestorWorkflow = (match, workflow) => {
     const relationshipIndex = relationshipInsights.findIndex((insight) => insight.investorName === match.entity_name);
+    const relationshipInsight = relationshipIndex >= 0 ? relationshipInsights[relationshipIndex] : null;
     if (relationshipIndex >= 0) {
       selectWarmIntroByIndex(relationshipIndex);
     } else {
@@ -935,25 +935,13 @@ export default function FounderIntakeForm() {
       return;
     }
 
-    const score = Math.round(match.final_score || match.final_score_scaled || 0);
     openPanel({
       id: "investor",
       title: match.entity_name || "Investor details",
       investor: {
-        name: match.entity_name || "Investor",
-        score,
-        label: getMatchLabel(score),
-        initials: getInvestorInitials(match.entity_name),
-        bullets: [
-          match.match_reason || "Matched from the current founder and startup profile.",
-          [match.investor_type, match.location_city, match.hq_country].filter(Boolean).join(" / ") || "Investor profile details unavailable.",
-          `Stage score: ${Math.round(match.stage_score || 0)} / Industry score: ${Math.round(match.industry_score || 0)}`,
-        ],
-        fundraisingScore: match.fundraising_score,
-        linkedinMatches: match.linkedin_matches,
-        linkedinMatchedCount: match.linkedin_matched_count || 0,
-        linkedinContribution: match.linkedin_contribution || 0,
-        relationshipPaths: match.relationshipPaths || match.relationship_paths || match.paths || [],
+        ...match,
+        name: match.entity_name || match.name || "Investor",
+        relationshipPaths: relationshipInsight?.warmPaths || match.relationshipPaths || match.relationship_paths || match.paths || [],
       },
     });
   };
@@ -1617,6 +1605,7 @@ const investorList = (investor, keys) => {
   if (Array.isArray(value)) return value.filter(Boolean);
   return String(value || "").split(/[,;|]/).map((item) => item.trim()).filter(Boolean);
 };
+const displayList = (items) => items.filter(Boolean).join(", ");
 const scoreLevel = (score) => {
   const numericScore = Number(score || 0);
   if (numericScore >= 90) return "Highest";
@@ -1624,6 +1613,41 @@ const scoreLevel = (score) => {
   if (numericScore >= 50) return "Medium";
   return "Low";
 };
+const DEFAULT_INVESTOR_FILTERS = {
+  sessions: [],
+  industryMatch: [],
+  stageMatch: [],
+  countryMatch: [],
+  cities: [],
+  countries: [],
+  regions: [],
+  investorTypes: [],
+  categories: [],
+  industries: [],
+  stages: [],
+  focusCountries: [],
+};
+const MATCH_LEVELS = ["Medium", "High", "Highest"];
+const GENERAL_INVESTOR_TYPES = ["Angel", "VC Fund", "VC Partner"];
+const PUBLIC_INVESTOR_IMPORT_SOURCES = [
+  "OpenVC investor database CSV/XLS export",
+  "Crunchbase-style investor CSV export",
+  "Signal/NFX-style investor directory export",
+];
+
+const uniqueSorted = (values) => [...new Set(values.filter(hasValue).map((value) => String(value).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+const getInvestorKey = (investor) => investor?.investor_id || investor?.entity_name || investor?.name;
+
+const getGeneralInvestorCategory = (investor) => {
+  const source = [investor?.investor_type, investor?.category, investor?.description].filter(Boolean).join(" ").toLowerCase();
+  if (source.includes("angel")) return "Angel";
+  if (source.includes("partner") || source.includes("person")) return "VC Partner";
+  if (source.includes("venture") || source.includes("vc") || source.includes("fund") || source.includes("capital")) return "VC Fund";
+  return "";
+};
+
+const toggleArrayValue = (values, value) => values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 
 function MatchPill({ score }) {
   if (!hasValue(score)) return <LockedValue />;
@@ -1642,21 +1666,27 @@ function LockedValue({ value, children, className = "" }) {
   return <span className={`inline-flex items-center gap-1 text-xs text-slate-400 ${className}`} title="Not provided by the backend"><LockKeyhole size={12} /> Unavailable</span>;
 }
 
+function TableValue({ value, children, className = "" }) {
+  if (!hasValue(value)) return <span className={`text-slate-300 ${className}`}>-</span>;
+  return <span className={className} title={String(value)}>{children || value}</span>;
+}
+
 function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoading, relationshipInsights, onOpenWorkflow }) {
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedRows, setSelectedRows] = useState([]);
   const [notice, setNotice] = useState("");
-  const [filters, setFilters] = useState({ stage: [], location: [], type: [], focus: [], connection: [], saved: [] });
+  const [filters, setFilters] = useState(DEFAULT_INVESTOR_FILTERS);
 
   const options = useMemo(() => ({
-    stage: [...new Set(matches.flatMap((item) => investorList(item, ["top_3_stages", "focus_stages", "stages"])))],
-    location: [...new Set(matches.flatMap((item) => [item.hq_country, item.location_city].filter(Boolean)))],
-    type: [...new Set(matches.map((item) => item.investor_type).filter(Boolean))],
-    focus: [...new Set(matches.flatMap((item) => investorList(item, ["top_3_industries", "focus_industries", "industries"])))],
-    connection: ["Warm intro available", "No warm intro path"],
-    saved: ["Selected investors"],
+    sessions: [],
+    cities: uniqueSorted(matches.map((item) => item.location_city)),
+    countries: uniqueSorted(matches.map((item) => item.hq_country)),
+    regions: uniqueSorted(matches.map((item) => investorValue(item, ["region", "location_region", "hq_region"]))),
+    categories: uniqueSorted(matches.map((item) => item.investor_type)),
+    industries: uniqueSorted(matches.flatMap((item) => investorList(item, ["top_3_industries", "focus_industries", "industries"]))),
+    stages: uniqueSorted(matches.flatMap((item) => investorList(item, ["top_3_stages", "focus_stages", "stages"]))),
+    focusCountries: uniqueSorted(matches.flatMap((item) => investorList(item, ["top_3_countries", "focus_geographies", "countries"]))),
   }), [matches]);
 
   const hasWarmIntro = (match) => relationshipInsights.some((insight) => insight.investorName === match.entity_name && insight.warmPaths?.length);
@@ -1667,22 +1697,26 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoa
       ...investorList(match, ["top_3_industries", "top_3_stages", "top_3_countries", "focus_industries", "industries", "focus_stages", "stages", "focus_geographies"]),
     ].filter(Boolean).join(" ").toLowerCase();
     if (query && !searchable.includes(query.toLowerCase())) return false;
-    if (filters.stage.length && !filters.stage.some((value) => investorList(match, ["top_3_stages", "focus_stages", "stages"]).includes(value))) return false;
-    if (filters.location.length && !filters.location.includes(match.hq_country) && !filters.location.includes(match.location_city)) return false;
-    if (filters.type.length && !filters.type.includes(match.investor_type)) return false;
-    if (filters.focus.length && !filters.focus.some((value) => investorList(match, ["top_3_industries", "focus_industries", "industries"]).includes(value))) return false;
-    if (filters.connection.includes("Warm intro available") && !hasWarmIntro(match)) return false;
-    if (filters.connection.includes("No warm intro path") && hasWarmIntro(match)) return false;
-    if (filters.saved.length && !selectedRows.includes(match.investor_id)) return false;
+    if (filters.industryMatch.length && !filters.industryMatch.includes(scoreLevel(match.industry_score))) return false;
+    if (filters.stageMatch.length && !filters.stageMatch.includes(scoreLevel(match.stage_score))) return false;
+    if (filters.countryMatch.length && !filters.countryMatch.includes(scoreLevel(match.country_score))) return false;
+    if (filters.cities.length && !filters.cities.includes(match.location_city)) return false;
+    if (filters.countries.length && !filters.countries.includes(match.hq_country)) return false;
+    if (filters.regions.length && !filters.regions.includes(investorValue(match, ["region", "location_region", "hq_region"]))) return false;
+    if (filters.investorTypes.length && !filters.investorTypes.includes(getGeneralInvestorCategory(match))) return false;
+    if (filters.categories.length && !filters.categories.includes(match.investor_type)) return false;
+    if (filters.industries.length && !filters.industries.some((value) => investorList(match, ["top_3_industries", "focus_industries", "industries"]).includes(value))) return false;
+    if (filters.stages.length && !filters.stages.some((value) => investorList(match, ["top_3_stages", "focus_stages", "stages"]).includes(value))) return false;
+    if (filters.focusCountries.length && !filters.focusCountries.some((value) => investorList(match, ["top_3_countries", "focus_geographies", "countries"]).includes(value))) return false;
     return true;
-  }), [matches, query, filters, selectedRows, relationshipInsights]);
+  }), [matches, query, filters]);
 
   const toggleRow = (id) => setSelectedRows((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   const downloadResults = () => {
-    const columns = ["Name", "Email", "Top Industry Match", "Top Stage Match", "Top Country Match", "Country", "City"];
+    const columns = ["Name", "Founders", "Top Industry Match", "Top Stage Match", "Top Country Match", "Country", "City"];
     const rows = filteredMatches.map((match) => [
       match.entity_name,
-      investorValue(match, ["contact_1_email", "contact_2_email", "email"]) || "",
+      displayList([investorValue(match, ["contact_1_name", "contact_2_name", "founder_name"])]),
       match.top_industry_match || "",
       match.top_stage_match || "",
       match.top_country_match || "",
@@ -1714,26 +1748,24 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoa
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3">
-          <button type="button" onClick={() => setFiltersOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Filter size={16} /> Filters</button>
+          <button type="button" onClick={() => setFiltersOpen((current) => !current)} className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold ${filtersOpen ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-700 hover:bg-slate-50"}`}><Filter size={16} /> Filters</button>
           <label className="flex h-10 min-w-[240px] flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm text-slate-500 sm:max-w-md">
             <Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search in results..." className="w-full bg-transparent outline-none" />
           </label>
-          <div className="relative">
-            <button type="button" onClick={() => setSettingsOpen((current) => !current)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Settings size={16} /> Settings</button>
-            {settingsOpen && <TableSettingsDropdown onClose={() => setSettingsOpen(false)} />}
-          </div>
           <div className="sm:ml-auto flex gap-2">
-            <button type="button" onClick={() => setNotice("Email availability is based on the current backend response.")} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Mail size={16} /> Find emails</button>
+            <button type="button" onClick={() => setNotice("Founder contact and outreach details open from the Founders column.")} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Mail size={16} /> Find founders</button>
             <button type="button" onClick={downloadResults} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700"><Download size={16} /> Download</button>
           </div>
         </div>
 
-        <div className="investor-table-scroll overflow-x-auto">
+        <div className="flex flex-col lg:flex-row">
+          {filtersOpen && <InvestorFilterPanel filters={filters} setFilters={setFilters} options={options} onClose={() => setFiltersOpen(false)} />}
+          <div className="investor-table-scroll min-w-0 flex-1 overflow-x-auto">
           <table className="min-w-[2400px] table-fixed text-left text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="w-12 px-4 py-4"><input type="checkbox" checked={filteredMatches.length > 0 && filteredMatches.every((match) => selectedRows.includes(match.investor_id))} onChange={() => setSelectedRows(filteredMatches.every((match) => selectedRows.includes(match.investor_id)) ? [] : filteredMatches.map((match) => match.investor_id))} /></th>
-                {["Name", "Email", "Links", "Top Industry Match", "Top Stage Match", "Top Country Match", "Top-3 Industries", "Top-3 Stages", "Top-3 Countries", "Categories", "Descriptions", "Country", "City", "Region", "Actions"].map((column) => (
+                <th className="w-12 px-4 py-4"><input type="checkbox" checked={filteredMatches.length > 0 && filteredMatches.every((match) => selectedRows.includes(getInvestorKey(match)))} onChange={() => setSelectedRows(filteredMatches.every((match) => selectedRows.includes(getInvestorKey(match))) ? [] : filteredMatches.map(getInvestorKey))} /></th>
+                {["Name", "Founders", "Links", "Top Industry Match", "Top Stage Match", "Top Country Match", "Top-3 Industries", "Top-3 Stages", "Top-3 Countries", "Categories", "Descriptions", "Country", "City", "Region", "Actions"].map((column) => (
                   <th key={column} className={`${column === "Descriptions" ? "w-80" : column === "Actions" ? "w-72" : "w-44"} px-4 py-4`}>{column}</th>
                 ))}
               </tr>
@@ -1742,7 +1774,6 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoa
               {matchingLoading ? (
                 <tr><td colSpan="16" className="px-6 py-16 text-center text-slate-500"><Loader2 className="mx-auto mb-3 animate-spin text-blue-600" /> Loading investor results...</td></tr>
               ) : filteredMatches.map((match) => {
-                const email = investorValue(match, ["contact_1_email", "contact_2_email", "email"]);
                 const linkedin = investorValue(match, ["company_linkedin", "contact_1_linkedin", "linkedin"]);
                 const twitter = investorValue(match, ["twitter", "twitter_url", "x_url"]);
                 const crunchbase = investorValue(match, ["crunchbase", "crunchbase_url"]);
@@ -1751,81 +1782,171 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoa
                 const stages = investorList(match, ["top_3_stages", "focus_stages", "stages"]).slice(0, 3);
                 const countries = investorList(match, ["top_3_countries", "focus_geographies", "countries"]).slice(0, 3);
                 const warmIntro = hasWarmIntro(match);
+                const rowKey = getInvestorKey(match);
                 return (
-                  <tr key={match.investor_id || match.entity_name} className="align-middle hover:bg-blue-50/30">
-                    <td className="px-4 py-4"><input type="checkbox" checked={selectedRows.includes(match.investor_id)} onChange={() => toggleRow(match.investor_id)} /></td>
+                  <tr key={rowKey} className="align-middle hover:bg-blue-50/30">
+                    <td className="px-4 py-4"><input type="checkbox" checked={selectedRows.includes(rowKey)} onChange={() => toggleRow(rowKey)} /></td>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-xs font-bold text-blue-700">{getInvestorInitials(match.entity_name)}</div>
                         <div className="min-w-0"><p className="truncate font-semibold text-slate-950">{match.entity_name}</p><p className="truncate text-xs text-slate-500">{match.investor_type || "Investor"}</p>{warmIntro && <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Warm intro available</span>}</div>
                       </div>
                     </td>
-                    <td className="px-4 py-4">{email ? <a href={`mailto:${email}`} className="font-medium text-blue-700 hover:underline">{email}</a> : <LockedValue />}</td>
+                    <td className="px-4 py-4">
+                      <button type="button" onClick={() => onOpenWorkflow(match, "details")} className="inline-flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100" aria-label={`Open investor details for ${match.entity_name}`}>
+                        <Mail size={15} /> Founders
+                      </button>
+                    </td>
                     <td className="px-4 py-4"><div className="flex gap-2">{linkedin && <a href={linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn" title="LinkedIn" className="text-blue-700"><Link size={17} /></a>}{twitter && <a href={twitter} target="_blank" rel="noreferrer" aria-label="Twitter or X" title="Twitter / X" className="text-slate-700"><MessageCircle size={17} /></a>}{crunchbase && <a href={crunchbase} target="_blank" rel="noreferrer" aria-label="Crunchbase" title="Crunchbase" className="text-blue-700"><Building2 size={17} /></a>}{website && <a href={website} target="_blank" rel="noreferrer" aria-label="Website" title="Website" className="text-slate-700"><Globe2 size={17} /></a>}{!linkedin && !twitter && !crunchbase && !website && <LockedValue />}</div></td>
-                    <td className="truncate px-4 py-4"><LockedValue value={match.top_industry_match}>{match.top_industry_match}</LockedValue></td>
-                    <td className="truncate px-4 py-4"><LockedValue value={match.top_stage_match}>{match.top_stage_match}</LockedValue></td>
-                    <td className="truncate px-4 py-4"><LockedValue value={match.top_country_match}>{match.top_country_match}</LockedValue></td>
-                    <td className="truncate px-4 py-4" title={industries.join(", ")}><LockedValue value={industries.join(", ")}>{industries.join(", ")}</LockedValue></td>
-                    <td className="truncate px-4 py-4" title={stages.join(", ")}><LockedValue value={stages.join(", ")}>{stages.join(", ")}</LockedValue></td>
-                    <td className="truncate px-4 py-4" title={countries.join(", ")}><LockedValue value={countries.join(", ")}>{countries.join(", ")}</LockedValue></td>
-                    <td className="truncate px-4 py-4"><LockedValue value={match.investor_type}>{match.investor_type}</LockedValue></td>
-                    <td className="truncate px-4 py-4" title={match.description || ""}><LockedValue value={match.description}>{match.description}</LockedValue></td>
-                    <td className="truncate px-4 py-4"><LockedValue value={match.hq_country}>{match.hq_country}</LockedValue></td>
-                    <td className="truncate px-4 py-4"><LockedValue value={match.location_city}>{match.location_city}</LockedValue></td>
-                    <td className="truncate px-4 py-4"><LockedValue value={investorValue(match, ["region", "location_region", "hq_region"])}>{investorValue(match, ["region", "location_region", "hq_region"])}</LockedValue></td>
-                    <td className="px-4 py-4"><div className="flex gap-1.5"><button type="button" onClick={() => onOpenWorkflow(match, "details")} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700">Details</button>{warmIntro ? <button type="button" onClick={() => onOpenWorkflow(match, "relationship")} className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700">Warm path</button> : <button type="button" disabled title="No relationship path provided by the backend" className="cursor-not-allowed rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-400">No path</button>}<button type="button" onClick={() => onOpenWorkflow(match, "outreach")} className="rounded-lg bg-[#07182f] px-2.5 py-1.5 text-xs font-semibold text-white">Outreach</button></div></td>
+                    <td className="truncate px-4 py-4"><TableValue value={match.top_industry_match}>{match.top_industry_match}</TableValue></td>
+                    <td className="truncate px-4 py-4"><TableValue value={match.top_stage_match}>{match.top_stage_match}</TableValue></td>
+                    <td className="truncate px-4 py-4"><TableValue value={match.top_country_match}>{match.top_country_match}</TableValue></td>
+                    <td className="truncate px-4 py-4" title={displayList(industries)}><TableValue value={displayList(industries)}>{displayList(industries)}</TableValue></td>
+                    <td className="truncate px-4 py-4" title={displayList(stages)}><TableValue value={displayList(stages)}>{displayList(stages)}</TableValue></td>
+                    <td className="truncate px-4 py-4" title={displayList(countries)}><TableValue value={displayList(countries)}>{displayList(countries)}</TableValue></td>
+                    <td className="truncate px-4 py-4"><TableValue value={match.investor_type}>{match.investor_type}</TableValue></td>
+                    <td className="truncate px-4 py-4" title={match.description || ""}><TableValue value={match.description}>{match.description}</TableValue></td>
+                    <td className="truncate px-4 py-4"><TableValue value={match.hq_country}>{match.hq_country}</TableValue></td>
+                    <td className="truncate px-4 py-4"><TableValue value={match.location_city}>{match.location_city}</TableValue></td>
+                    <td className="truncate px-4 py-4"><TableValue value={investorValue(match, ["region", "location_region", "hq_region"])}>{investorValue(match, ["region", "location_region", "hq_region"])}</TableValue></td>
+                    <td className="px-4 py-4"><div className="flex gap-1.5"><button type="button" onClick={() => onOpenWorkflow(match, "details")} className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700">Details</button>{warmIntro && <button type="button" onClick={() => onOpenWorkflow(match, "relationship")} className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700">Warm intro</button>}<button type="button" onClick={() => onOpenWorkflow(match, "outreach")} className="rounded-lg bg-[#07182f] px-2.5 py-1.5 text-xs font-semibold text-white">Outreach</button></div></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
-
-      {filtersOpen && <InvestorFilterPanel filters={filters} setFilters={setFilters} options={options} onClose={() => setFiltersOpen(false)} />}
     </main>
   );
 }
 
-function TableSettingsDropdown({ onClose }) {
-  const dropdownRef = useRef(null);
-  useEffect(() => {
-    const closeOnOutsideClick = (event) => {
-      if (!dropdownRef.current?.contains(event.target)) onClose();
-    };
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
-  }, [onClose]);
-
+function InvestorFilterPanel({ filters, setFilters, options, onClose }) {
+  const [expanded, setExpanded] = useState({ saved: true, matching: true, location: true, type: true, focus: true });
+  const toggleFilter = (group, value) => setFilters((current) => ({ ...current, [group]: toggleArrayValue(current[group] || [], value) }));
+  const resetFilters = () => setFilters(DEFAULT_INVESTOR_FILTERS);
   return (
-    <div ref={dropdownRef} className="absolute left-0 top-12 z-30 w-56 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-      <p className="px-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">View</p>
-      <div className="mt-2 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-3 text-sm font-semibold text-blue-800">
-        <span className="flex h-5 w-5 items-center justify-center rounded-md bg-blue-600 text-white"><CheckCircle2 size={14} /></span>
-        Table
+    <aside className="w-full shrink-0 border-b border-slate-200 bg-slate-50/70 p-4 lg:w-80 lg:border-b-0 lg:border-r">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Refine results</p>
+          <h2 className="mt-1 text-lg font-semibold text-slate-950">Filters</h2>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-lg bg-white p-2 text-slate-500 shadow-sm hover:bg-slate-100"><X size={18} /></button>
+      </div>
+      <div className="space-y-3">
+        <FilterSection title="Saved List" expanded={expanded.saved} onToggle={() => setExpanded((current) => ({ ...current, saved: !current.saved }))}>
+          <PlaceholderSelect label="No lists yet" disabled />
+        </FilterSection>
+
+        <FilterSection title="Matching Search" expanded={expanded.matching} onToggle={() => setExpanded((current) => ({ ...current, matching: !current.matching }))}>
+          <PlaceholderSelect label="Pick sessions..." disabled />
+          <FilterButtonGroup title="Industry match" values={MATCH_LEVELS} selected={filters.industryMatch} onToggle={(value) => toggleFilter("industryMatch", value)} />
+          <FilterButtonGroup title="Stage match" values={MATCH_LEVELS} selected={filters.stageMatch} onToggle={(value) => toggleFilter("stageMatch", value)} />
+          <FilterButtonGroup title="Country match" values={MATCH_LEVELS} selected={filters.countryMatch} onToggle={(value) => toggleFilter("countryMatch", value)} />
+        </FilterSection>
+
+        <FilterSection title="Location" expanded={expanded.location} onToggle={() => setExpanded((current) => ({ ...current, location: !current.location }))}>
+          <CheckboxDropdown label="Select cities..." values={options.cities} selected={filters.cities} onToggle={(value) => toggleFilter("cities", value)} />
+          <CheckboxDropdown label="Select countries..." values={options.countries} selected={filters.countries} onToggle={(value) => toggleFilter("countries", value)} />
+          <CheckboxDropdown label="Select regions..." values={options.regions} selected={filters.regions} onToggle={(value) => toggleFilter("regions", value)} />
+        </FilterSection>
+
+        <FilterSection title="Investor Type" expanded={expanded.type} onToggle={() => setExpanded((current) => ({ ...current, type: !current.type }))}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">General Category</p>
+          <div className="space-y-2">
+            {GENERAL_INVESTOR_TYPES.map((type) => (
+              <label key={type} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={filters.investorTypes.includes(type)} onChange={() => toggleFilter("investorTypes", type)} />
+                {type}
+              </label>
+            ))}
+          </div>
+          <CheckboxDropdown label="Select categories..." values={options.categories} selected={filters.categories} onToggle={(value) => toggleFilter("categories", value)} />
+        </FilterSection>
+
+        <FilterSection title="Investment Focus" expanded={expanded.focus} onToggle={() => setExpanded((current) => ({ ...current, focus: !current.focus }))}>
+          <CheckboxDropdown label="Search industries..." values={options.industries} selected={filters.industries} onToggle={(value) => toggleFilter("industries", value)} searchable />
+          <CheckboxDropdown label="Select stages..." values={options.stages} selected={filters.stages} onToggle={(value) => toggleFilter("stages", value)} />
+          <CheckboxDropdown label="Select countries..." values={options.focusCountries} selected={filters.focusCountries} onToggle={(value) => toggleFilter("focusCountries", value)} />
+        </FilterSection>
+
+      </div>
+      <div className="mt-5 flex gap-2">
+        <button type="button" onClick={resetFilters} className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">Clear</button>
+        <button type="button" onClick={onClose} className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white">Show results</button>
+      </div>
+      <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-500">
+        <summary className="cursor-pointer font-semibold text-slate-600">Optional public CSV import support</summary>
+        <p className="mt-2 leading-5">Future local imports can accept user-provided `.csv`, `.xls`, or `.xlsx` exports. No public platforms are scraped in production.</p>
+        <ul className="mt-2 space-y-1">
+          {PUBLIC_INVESTOR_IMPORT_SOURCES.map((source) => <li key={source}>{source}</li>)}
+        </ul>
+      </details>
+    </aside>
+  );
+}
+
+function FilterSection({ title, expanded, onToggle, children }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-slate-800">
+        {title}
+        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+      </button>
+      {expanded && <div className="space-y-3 border-t border-slate-100 px-4 py-3">{children}</div>}
+    </section>
+  );
+}
+
+function PlaceholderSelect({ label, disabled = false }) {
+  return (
+    <button type="button" disabled={disabled} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm text-slate-400">
+      {label}
+      <ChevronDown size={15} />
+    </button>
+  );
+}
+
+function FilterButtonGroup({ title, values, selected, onToggle }) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
+      <div className="flex flex-wrap gap-2">
+        {values.map((value) => (
+          <button key={value} type="button" onClick={() => onToggle(value)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${selected.includes(value) ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
+            {value}
+          </button>
+        ))}
       </div>
     </div>
   );
 }
 
-function InvestorFilterPanel({ filters, setFilters, options, onClose }) {
-  const [expanded, setExpanded] = useState({ saved: true, stage: true, location: true, type: true, focus: true, connection: true });
-  const groups = [["saved", "Saved List"], ["stage", "Matching Stage"], ["location", "Location"], ["type", "Investor Type"], ["focus", "Investment Focus"], ["connection", "Connection Data"]];
-  const toggleFilter = (group, value) => setFilters((current) => ({ ...current, [group]: current[group].includes(value) ? current[group].filter((item) => item !== value) : [...current[group], value] }));
+function CheckboxDropdown({ label, values, selected, onToggle, searchable = false }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const visibleValues = searchable && search ? values.filter((value) => value.toLowerCase().includes(search.toLowerCase())) : values;
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-sm" onMouseDown={onClose}>
-      <aside className="h-full w-full max-w-sm overflow-y-auto bg-white p-5 shadow-2xl lg:ml-72" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="mb-5 flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Refine results</p><h2 className="mt-1 text-xl font-semibold">Filters</h2></div><button type="button" onClick={onClose} className="rounded-lg bg-slate-100 p-2"><X size={18} /></button></div>
-        <div className="space-y-2">
-          {groups.map(([key, label]) => (
-            <section key={key} className="rounded-xl border border-slate-200">
-              <button type="button" onClick={() => setExpanded((current) => ({ ...current, [key]: !current[key] }))} className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-slate-800">{label}{expanded[key] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
-              {expanded[key] && <div className="space-y-2 border-t border-slate-100 px-4 py-3">{options[key].length ? options[key].map((option) => <label key={option} className="flex cursor-pointer items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={filters[key].includes(option)} onChange={() => toggleFilter(key, option)} />{option}</label>) : <p className="text-xs text-slate-400">No values provided by the backend.</p>}</div>}
-            </section>
-          ))}
+    <div className="rounded-xl border border-slate-200 bg-slate-50">
+      <button type="button" onClick={() => setOpen((current) => !current)} className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm text-slate-500">
+        <span className="truncate">{selected.length ? selected.join(", ") : label}</span>
+        <ChevronDown size={15} />
+      </button>
+      {open && (
+        <div className="max-h-56 overflow-y-auto border-t border-slate-200 bg-white p-3">
+          {searchable && <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={label} className="mb-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300" />}
+          <div className="space-y-2">
+            {visibleValues.length ? visibleValues.map((value) => (
+              <label key={value} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={selected.includes(value)} onChange={() => onToggle(value)} />
+                <span className="truncate">{value}</span>
+              </label>
+            )) : <p className="text-xs text-slate-400">No values in enriched investor data.</p>}
+          </div>
         </div>
-        <div className="mt-5 flex gap-2"><button type="button" onClick={() => setFilters({ stage: [], location: [], type: [], focus: [], connection: [], saved: [] })} className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold">Clear</button><button type="button" onClick={onClose} className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white">Show results</button></div>
-      </aside>
+      )}
     </div>
   );
 }
@@ -2128,7 +2249,7 @@ function DashboardDrawer({
         ) : activePanel.id === "matching" ? (
           <MatchesPanel matches={matches} matchingLoading={matchingLoading} matchingSource={matchingSource} />
         ) : activePanel.id === "investor" ? (
-          <InvestorDetailPanel investor={activePanel.investor} />
+          <InvestorDetailPanel investor={activePanel.investor} generatedEmail={generatedEmail} />
         ) : activePanel.id === "relationship" ? (
           <RelationshipIntelligencePanel
             matches={matches}
@@ -2275,132 +2396,151 @@ function formatLinkedInMatches(matches = {}) {
     .join(" · ");
 }
 
-function InvestorDetailPanel({ investor }) {
+function InvestorDetailPanel({ investor, generatedEmail = {} }) {
   if (!investor) return null;
-  const verifiedPaths = investor.relationshipPaths || [];
+  const name = investor.entity_name || investor.name || "Investor";
+  const website = investorValue(investor, ["website", "website_url"]);
+  const linkedin = investorValue(investor, ["company_linkedin", "contact_1_linkedin", "linkedin"]);
+  const twitter = investorValue(investor, ["twitter", "twitter_url", "x_url"]);
+  const crunchbase = investorValue(investor, ["crunchbase", "crunchbase_url"]);
+  const region = investorValue(investor, ["region", "location_region", "hq_region"]);
+  const relationshipPaths = investor.relationshipPaths || investor.relationship_paths || investor.paths || [];
+  const score = Math.round(investor.final_score || investor.final_score_scaled || investor.score || 0);
+  const industries = investorList(investor, ["top_3_industries", "focus_industries", "industries"]).slice(0, 3);
+  const stages = investorList(investor, ["top_3_stages", "focus_stages", "stages"]).slice(0, 3);
+  const countries = investorList(investor, ["top_3_countries", "focus_geographies", "countries"]).slice(0, 3);
+  const hasOutreachDraft = Boolean(generatedEmail.subject || generatedEmail.body);
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50 p-5">
-      <div className="rounded-lg border border-slate-200 bg-white p-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-blue-50 text-sm font-black text-blue-700">
-              {investor.initials}
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-sm font-black text-blue-700">
+              {getInvestorInitials(name)}
             </div>
             <div>
-              <h3 className="text-xl font-semibold text-slate-950">{investor.name}</h3>
-              <p className="text-sm font-semibold text-emerald-700">{investor.label}</p>
+              <h3 className="text-xl font-semibold text-slate-950">{name}</h3>
+              <p className="text-sm text-slate-500">{investor.investor_type || investor.category || "Investor"}</p>
             </div>
           </div>
-          <div className="rounded-lg bg-blue-50 px-4 py-3 text-blue-700">
-            <p className="text-3xl font-semibold">{investor.score}%</p>
-            <p className="text-xs font-semibold">match score</p>
-          </div>
+          {score > 0 && (
+            <div className="rounded-xl bg-blue-50 px-4 py-3 text-blue-700">
+              <p className="text-3xl font-semibold">{score}%</p>
+              <p className="text-xs font-semibold">match score</p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <InvestorDetailField label="Website" value={website} link />
+          <InvestorDetailField label="Location" value={displayList([investor.location_city, region, investor.hq_country])} />
+          <InvestorDetailField label="Category" value={investor.investor_type || investor.category} />
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
-          {["Fintech", "Canada", "Pre-seed / Seed"].map((tag) => (
-            <span key={tag} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-              {tag}
-            </span>
-          ))}
+          {linkedin && <InvestorLink href={linkedin} label="LinkedIn" icon={<Link size={15} />} />}
+          {twitter && <InvestorLink href={twitter} label="Twitter / X" icon={<MessageCircle size={15} />} />}
+          {crunchbase && <InvestorLink href={crunchbase} label="Crunchbase" icon={<Building2 size={15} />} />}
+          {website && <InvestorLink href={website} label="Website" icon={<Globe2 size={15} />} />}
         </div>
 
-        <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_.9fr]">
-          <div>
-            <p className="text-sm font-semibold text-slate-950">Why matched</p>
-            <ul className="mt-3 space-y-3">
-              {investor.bullets.map((bullet) => (
-                <li key={bullet} className="flex gap-2 text-sm leading-6 text-slate-600">
-                  <CheckCircle2 className="mt-1 shrink-0 text-emerald-500" size={16} />
-                  <span>{bullet}</span>
-                </li>
-              ))}
-            </ul>
+        {investor.description && (
+          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-950">Description</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{investor.description}</p>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <LinkedInMatchSummary
-              matches={investor.linkedinMatches}
-              matchedCount={investor.linkedinMatchedCount}
-              contribution={investor.linkedinContribution}
-            />
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <p className="text-sm font-semibold text-slate-950">Warm Intro Path</p>
-            {verifiedPaths.length > 0 ? (
-              <div className="mt-3 space-y-3">
-                {verifiedPaths.map((path, index) => (
-                  <div key={`${path.path?.join("-")}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
-                    <p className="text-sm font-semibold text-slate-950">
-                      Path {index + 1}: {path.path.join(" -> ")}
-                    </p>
-                    <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
-                      <p>Hops: {path.hops}</p>
-                      <p>Relationship Score: {path.relationship_score}</p>
-                      <p>Match Type: {path.match_type || "relationship path"}</p>
-                      <p>Confidence: {path.confidence || "verified"}</p>
-                    </div>
-                    {path.evidence?.length > 0 && (
-                      <div className="mt-3 space-y-1">
-                        {path.evidence.map((evidence) => (
-                          <p key={evidence} className="text-xs leading-5 text-slate-500">
-                            Evidence: {evidence}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-3 overflow-hidden rounded-lg border border-dashed border-slate-300 bg-white p-4">
-                <div className="pointer-events-none select-none blur-[2px]">
-                  <p className="text-sm font-semibold text-slate-400">
-                    Path 1: You &gt; verified connection &gt; investor partner
-                  </p>
-                  <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
-                    <p>Hops: pending</p>
-                    <p>Relationship Score: pending</p>
-                    <p>Match Type: verified graph path</p>
-                    <p>Confidence: pending</p>
-                  </div>
-                </div>
-                <p className="mt-4 rounded-md bg-blue-50 px-3 py-2 text-sm font-medium leading-6 text-blue-700">
-                  Link with your connections to generate warm intro path.
-                </p>
-              </div>
-            )}
-          </div>
+        )}
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <InvestorDetailField label="Top industry match" value={investor.top_industry_match} />
+          <InvestorDetailField label="Top stage match" value={investor.top_stage_match} />
+          <InvestorDetailField label="Top country match" value={investor.top_country_match} />
         </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          <InvestorPillField label="Top-3 industries" values={industries} />
+          <InvestorPillField label="Top-3 stages" values={stages} />
+          <InvestorPillField label="Top-3 countries" values={countries} />
+        </div>
+
+        {relationshipPaths.length > 0 && (
+          <div className="mt-6 rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
+            <p className="text-sm font-semibold text-slate-950">Relationship intelligence path</p>
+            <div className="mt-3 space-y-3">
+              {relationshipPaths.map((path, index) => (
+                <div key={`${path.path?.join("-") || "path"}-${index}`} className="rounded-xl border border-emerald-100 bg-white p-3">
+                  <p className="text-sm font-semibold text-slate-950">
+                    {path.path?.length ? path.path.join(" -> ") : path.introPath || `Path ${index + 1}`}
+                  </p>
+                  <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                    {hasValue(path.hops) && <p>Hops: {path.hops}</p>}
+                    {hasValue(path.relationship_score) && <p>Relationship Score: {path.relationship_score}</p>}
+                    {path.match_type && <p>Match Type: {path.match_type}</p>}
+                    {path.confidence && <p>Confidence: {path.confidence}</p>}
+                  </div>
+                  {path.evidence?.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      {path.evidence.map((evidence) => (
+                        <p key={evidence} className="text-xs leading-5 text-slate-500">Evidence: {evidence}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {hasOutreachDraft && (
+          <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-4">
+            <p className="text-sm font-semibold text-slate-950">Generated outreach message</p>
+            {generatedEmail.subject && <p className="mt-2 text-sm font-semibold text-blue-800">{generatedEmail.subject}</p>}
+            {generatedEmail.body && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700">{generatedEmail.body}</p>}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function LinkedInMatchSummary({ matches = {}, matchedCount = 0, contribution = 0 }) {
-  const conditions = [
-    ["Alumni", Boolean(matches.alumni || matches.alumni_partial)],
-    ["Industry Experience", Boolean(matches.industry_experience)],
-    ["Employer", Boolean(matches.employer)],
-    ["Geography", Boolean(matches.geography)],
-  ];
-
+function InvestorDetailField({ label, value, link = false }) {
+  if (!hasValue(value)) return null;
   return (
-    <div>
-      <p className="text-sm font-semibold text-slate-950">LinkedIn Match Summary</p>
-      <div className="mt-3 space-y-2">
-        {conditions.map(([label, matched]) => (
-          <p key={label} className={`text-sm font-medium ${matched ? "text-emerald-700" : "text-slate-500"}`}>
-            {matched ? "✓" : "✗"} {label}
-            {label === "Alumni" && matches.alumni_partial ? " (university only)" : ""}
-          </p>
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      {link ? (
+        <a href={value} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:underline">
+          {value}
+          <ExternalLink size={14} />
+        </a>
+      ) : (
+        <p className="mt-2 text-sm font-semibold text-slate-900">{value}</p>
+      )}
+    </div>
+  );
+}
+
+function InvestorPillField({ label, values }) {
+  if (!values.length) return null;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {values.map((value) => (
+          <span key={value} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{value}</span>
         ))}
       </div>
-      <p className="mt-3 text-sm font-semibold text-slate-700">Matched: {matchedCount} / 4</p>
-      <p className="mt-1 text-xs text-slate-500">
-        Final score contribution: {Number(contribution || 0).toFixed(2)}%
-      </p>
     </div>
+  );
+}
+
+function InvestorLink({ href, label, icon }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-blue-200 hover:text-blue-700">
+      {icon}
+      {label}
+    </a>
   );
 }
 
