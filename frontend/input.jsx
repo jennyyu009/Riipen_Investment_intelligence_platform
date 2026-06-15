@@ -40,13 +40,87 @@ import {
 import { apiFetch } from "./src/lib/api";
 
 const PAGE_STORAGE_KEY = "founderInvestorMatchPage";
+const DASHBOARD_STATE_STORAGE_KEY = "founderInvestorMatchDashboardState";
 const VALID_PAGES = new Set(["landing", "form", "dashboard"]);
 const MAX_PITCH_DECK_BYTES = 10 * 1024 * 1024;
+const DEFAULT_FORM_DATA = {
+  name: "",
+  linkedinUrl: "",
+  currentRole: "",
+  email: "",
+  location: "",
+  education: "",
+  startupName: "",
+  websiteUrl: "",
+  stage: "",
+  industry: [],
+  businessModel: [],
+  fundraisingPreference: "",
+  pitchDeck: null,
+};
 
 const getInitialPage = () => {
   if (typeof window === "undefined") return "landing";
   const savedPage = window.localStorage.getItem(PAGE_STORAGE_KEY);
   return VALID_PAGES.has(savedPage) ? savedPage : "landing";
+};
+
+const loadStoredDashboardState = () => {
+  if (typeof window === "undefined") return null;
+  try {
+    const rawState = window.localStorage.getItem(DASHBOARD_STATE_STORAGE_KEY);
+    if (!rawState) return null;
+    const parsedState = JSON.parse(rawState);
+    if (!parsedState || typeof parsedState !== "object") return null;
+    return parsedState;
+  } catch (error) {
+    return null;
+  }
+};
+
+const getInitialFormData = () => {
+  const storedState = loadStoredDashboardState();
+  if (!storedState?.formData) return DEFAULT_FORM_DATA;
+  return {
+    ...DEFAULT_FORM_DATA,
+    ...storedState.formData,
+    industry: Array.isArray(storedState.formData.industry) ? storedState.formData.industry : [],
+    businessModel: Array.isArray(storedState.formData.businessModel) ? storedState.formData.businessModel : [],
+    pitchDeck: storedState.formData.pitchDeckName ? { name: storedState.formData.pitchDeckName, persisted: true } : null,
+  };
+};
+
+const serializeFormDataForStorage = (data) => ({
+  ...data,
+  pitchDeck: undefined,
+  pitchDeckName: data.pitchDeck?.name || "",
+});
+
+const isFounderProfileComplete = (data) => Boolean(
+  data.name?.trim() &&
+  data.linkedinUrl?.trim() &&
+  data.startupName?.trim() &&
+  data.stage &&
+  data.industry?.length &&
+  data.businessModel?.length &&
+  data.fundraisingPreference?.trim()
+);
+
+const saveDashboardState = ({ formData, matches, matchingSource, relationshipInsights }) => {
+  if (typeof window === "undefined" || matchingSource !== "backend" || !matches?.length) return;
+  window.localStorage.setItem(DASHBOARD_STATE_STORAGE_KEY, JSON.stringify({
+    version: 1,
+    savedAt: new Date().toISOString(),
+    formData: serializeFormDataForStorage(formData),
+    matches,
+    matchingSource,
+    relationshipInsights: relationshipInsights || [],
+  }));
+};
+
+const clearStoredDashboardState = () => {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(DASHBOARD_STATE_STORAGE_KEY);
 };
 
 const getTimeBasedGreeting = () => {
@@ -56,29 +130,6 @@ const getTimeBasedGreeting = () => {
   if (hour >= 17 && hour < 21) return "Good Evening";
   return "Good Night";
 };
-
-const fallbackMatches = [
-  ["Early Stage Technology Fund", 98],
-  ["North America Seed Partners", 94],
-  ["Enterprise Software Ventures", 91],
-  ["Founder First Capital", 88],
-  ["Growth Technology Partners", 85],
-  ["Innovation Seed Fund", 82],
-  ["B2B Venture Partners", 79],
-  ["Canadian Startup Capital", 76],
-  ["Applied AI Ventures", 73],
-  ["Digital Economy Fund", 70],
-  ["Scaleup Capital Partners", 67],
-  ["Technology Growth Fund", 64],
-  ["Future Markets Ventures", 61],
-  ["Operator Angel Network", 58],
-  ["Emerging Companies Fund", 55],
-].map(([entityName, finalScore], index) => ({
-  investor_id: index + 1,
-  entity_name: entityName,
-  final_score: finalScore,
-  match_reason: "Fallback match shown because the backend returned no ranked investors.",
-}));
 
 const relationshipReadiness = [
   { label: "LinkedIn connections", value: "Not linked", state: "Action needed" },
@@ -415,21 +466,7 @@ const normalizeRelationshipIntelligence = (payload, matches = []) => {
 
 export default function FounderIntakeForm() {
   const [page, setPage] = useState(getInitialPage);
-  const [formData, setFormData] = useState({
-    name: "",
-    linkedinUrl: "",
-    currentRole: "",
-    email: "",
-    location: "",
-    education: "",
-    startupName: "",
-    websiteUrl: "",
-    stage: "",
-    industry: [],
-    businessModel: [],
-    fundraisingPreference: "",
-    pitchDeck: null,
-  });
+  const [formData, setFormData] = useState(getInitialFormData);
 
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState(false);
@@ -437,7 +474,7 @@ export default function FounderIntakeForm() {
   const [matches, setMatches] = useState([]);
   const [matchingLoading, setMatchingLoading] = useState(false);
   const [enrichmentLoading, setEnrichmentLoading] = useState(false);
-  const [matchingSource, setMatchingSource] = useState("fallback");
+  const [matchingSource, setMatchingSource] = useState("empty");
   const [relationshipInsights, setRelationshipInsights] = useState([]);
   const [selectedRelationshipIndex, setSelectedRelationshipIndex] = useState(0);
   const [selectedWarmPathIndex, setSelectedWarmPathIndex] = useState(0);
@@ -546,6 +583,33 @@ export default function FounderIntakeForm() {
     let cancelled = false;
 
     const loadMatches = async () => {
+      if (!submitted) {
+        const storedState = loadStoredDashboardState();
+        if (storedState?.matches?.length) {
+          setMatches(storedState.matches);
+          setRelationshipInsights(storedState.relationshipInsights || []);
+          setSelectedRelationshipIndex(0);
+          setSelectedWarmPathIndex(0);
+          setSelectedWarmIntro(storedState.relationshipInsights?.[0]?.warmPaths?.[0] || null);
+          setSelectedInvestor(storedState.relationshipInsights?.[0]?.investorName || null);
+          setMatchingSource(storedState.matchingSource || "backend");
+          setMatchingLoading(false);
+          return;
+        }
+      }
+
+      if (!isFounderProfileComplete(formData)) {
+        setMatches([]);
+        setRelationshipInsights([]);
+        setSelectedRelationshipIndex(0);
+        setSelectedWarmPathIndex(0);
+        setSelectedWarmIntro(null);
+        setSelectedInvestor(null);
+        setMatchingSource("empty");
+        setMatchingLoading(false);
+        return;
+      }
+
       setMatchingLoading(true);
       setMatches([]);
       setRelationshipInsights([]);
@@ -596,7 +660,7 @@ export default function FounderIntakeForm() {
               relationshipIntelligence: investor.relationshipIntelligence || investor.relationship_intelligence,
               relationshipPaths: investor.relationshipPaths || investor.relationship_paths || investor.paths,
             }))
-          : fallbackMatches;
+          : [];
         const normalizedRelationships = normalizeRelationshipIntelligence(matchData, normalizedMatches);
 
         const remainingDelay = Math.max(0, 1400 - (Date.now() - startedAt));
@@ -608,21 +672,30 @@ export default function FounderIntakeForm() {
           setSelectedWarmPathIndex(0);
           setSelectedWarmIntro(normalizedRelationships[0]?.warmPaths?.[0] || null);
           setSelectedInvestor(normalizedRelationships[0]?.investorName || null);
-          setMatchingSource(topInvestors.length ? "backend" : "fallback");
+          const nextMatchingSource = topInvestors.length ? "backend" : "empty";
+          setMatchingSource(nextMatchingSource);
+          saveDashboardState({
+            formData,
+            matches: normalizedMatches,
+            matchingSource: nextMatchingSource,
+            relationshipInsights: normalizedRelationships,
+          });
+          setSubmitted(false);
           setMatchingLoading(false);
         }, remainingDelay);
       } catch (error) {
-        console.error("[Matching] Backend request failed; showing fallback matches", error);
+        console.error("[Matching] Backend request failed", error);
         const remainingDelay = Math.max(0, 1400 - (Date.now() - startedAt));
         window.setTimeout(() => {
           if (cancelled) return;
-          setMatches(fallbackMatches);
+          setMatches([]);
           setRelationshipInsights([]);
           setSelectedRelationshipIndex(0);
           setSelectedWarmPathIndex(0);
           setSelectedWarmIntro(null);
           setSelectedInvestor(null);
-          setMatchingSource("fallback");
+          setMatchingSource("error");
+          setSubmitted(false);
           setMatchingLoading(false);
         }, remainingDelay);
       }
@@ -664,10 +737,19 @@ export default function FounderIntakeForm() {
         });
         if (cancelled) return;
         const enrichedById = new Map((data?.investors || []).map((investor) => [investor.investor_id, investor]));
-        setMatches((current) => current.map((match) => ({
-          ...match,
-          ...(enrichedById.get(match.investor_id) || {}),
-        })));
+        setMatches((current) => {
+          const enrichedMatches = current.map((match) => ({
+            ...match,
+            ...(enrichedById.get(match.investor_id) || {}),
+          }));
+          saveDashboardState({
+            formData,
+            matches: enrichedMatches,
+            matchingSource,
+            relationshipInsights,
+          });
+          return enrichedMatches;
+        });
       } catch (error) {
         console.error("[Enrichment] Investor enrichment request failed", error);
       } finally {
@@ -760,6 +842,7 @@ export default function FounderIntakeForm() {
   };
 
   const handleLogout = () => {
+    clearStoredDashboardState();
     setPage("landing");
     setActivePanel(null);
     setSubmitError(false);
@@ -802,7 +885,7 @@ export default function FounderIntakeForm() {
   ];
 
   const dashboardUserName = formData.name || "Founder";
-  const displayedMatches = matches.length ? matches : fallbackMatches;
+  const displayedMatches = matches;
   const topInvestorCards = displayedMatches.slice(0, 3).map((match) => {
     const score = Math.round(match.final_score || match.final_score_scaled || 0);
     const location = [match.location_city, match.hq_country].filter(Boolean).join(", ");
@@ -830,7 +913,7 @@ export default function FounderIntakeForm() {
     };
   });
   const kpiCards = [
-    { label: "Top Matches", value: "15", detail: matchingSource === "backend" ? "Live ranked investors" : "Ranked investor shortlist", icon: <Target size={19} /> },
+    { label: "Top Matches", value: String(displayedMatches.length), detail: matchingSource === "backend" ? "Live ranked investors" : "No ranked investors loaded", icon: <Target size={19} /> },
     { label: "Pitch Deck Impact", value: `${deckBoost}%`, detail: formData.pitchDeck ? "Lift after deck upload" : "Projected matching lift", icon: <FileText size={19} /> },
     { label: "Warm Intro Paths", value: "24", detail: "Qualified relationship paths", icon: <Handshake size={19} /> },
     { label: "Network Connections", value: "87", detail: "Mapped venture contacts", icon: <UsersRound size={19} /> },
@@ -884,6 +967,12 @@ export default function FounderIntakeForm() {
       setSelectedWarmPathIndex(0);
       setSelectedWarmIntro(normalizedRelationships[0]?.warmPaths?.[0] || null);
       setSelectedInvestor(normalizedRelationships[0]?.investorName || null);
+      saveDashboardState({
+        formData,
+        matches: displayedMatches,
+        matchingSource,
+        relationshipInsights: normalizedRelationships,
+      });
     } catch (error) {
       setRelationshipInsights([]);
       setSelectedWarmPathIndex(0);
@@ -1031,6 +1120,7 @@ export default function FounderIntakeForm() {
 
     setSubmitError(false);
     setMissingFields([]);
+    clearStoredDashboardState();
     setSubmitted(true);
     setPage("dashboard");
   };
@@ -1421,7 +1511,7 @@ export default function FounderIntakeForm() {
                 <div>
                   <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
                     {matchingLoading ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
-                    {matchingLoading ? "Refreshing investor graph" : matchingSource === "backend" ? "Live ranking model" : "Fallback ranking"}
+                    {matchingLoading ? "Refreshing investor graph" : matchingSource === "backend" ? "Live ranking model" : "No ranking loaded"}
                   </div>
                   <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
                     {timeGreeting}, {dashboardUserName}
@@ -1980,7 +2070,7 @@ function SmartMatchingPage({ formData, matches, matchingLoading, enrichmentLoadi
         <div className="mt-9 grid gap-3 md:grid-cols-4">{stages.map(([label, detail], index) => <div key={label} className="rounded-2xl border border-blue-100 bg-white p-4"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{index + 1}</span><p className="mt-3 text-sm font-semibold text-slate-900">{label}</p><p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p></div>)}</div>
       </section>
       <section className="mx-auto mt-6 max-w-6xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between"><div><h2 className="font-semibold text-slate-950">Previous searches</h2><p className="mt-1 text-sm text-slate-500">Reopen your latest ranked investor list.</p></div><span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">{matchingSource === "backend" ? "Live results" : "Fallback results"}</span></div>
+        <div className="flex items-center justify-between"><div><h2 className="font-semibold text-slate-950">Previous searches</h2><p className="mt-1 text-sm text-slate-500">Reopen your latest ranked investor list.</p></div><span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">{matchingSource === "backend" ? "Live results" : "No saved results"}</span></div>
         <div className="mt-5 grid gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_180px_160px_120px] md:items-center">
           <div><p className="font-semibold text-slate-900">{summary}</p><p className="mt-1 text-xs text-slate-500">Industry / Stage / Country</p></div>
           <div><p className="text-sm font-semibold text-slate-800">{new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date())}</p><p className="mt-1 text-xs text-slate-500">Created date</p></div>
@@ -2350,7 +2440,7 @@ function MatchesPanel({ matches, matchingLoading, matchingSource }) {
         </div>
         <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
           {matchingLoading ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
-          {matchingLoading ? "Loading" : matchingSource === "backend" ? "Live results" : "Fallback results"}
+          {matchingLoading ? "Loading" : matchingSource === "backend" ? "Live results" : "No ranked results"}
         </span>
       </div>
 
