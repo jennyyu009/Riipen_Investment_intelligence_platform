@@ -1,4 +1,5 @@
 import logging
+import json
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -49,7 +50,11 @@ def match_investors(startup_id: int, db: Session = Depends(get_db)):
             industry_score=score_result["industry_score"],
             stage_score=score_result.get("stage_score", 0),
             location_score=score_result["location_score"],
-            description_score=score_result["description_score"],
+            fundraising_score=score_result["fundraising_score"],
+            linkedin_score=score_result["linkedin_score"],
+            linkedin_matched_count=score_result["linkedin_matched_count"],
+            linkedin_contribution=score_result["linkedin_contribution"],
+            linkedin_matches=json.dumps(score_result["linkedin_matches"]),
             team_score=0,
             match_reason=reason,
         )
@@ -71,23 +76,27 @@ def match_investors(startup_id: int, db: Session = Depends(get_db)):
             "contact_2_designation": investor.contact_2_designation,
             "contact_2_linkedin": investor.contact_2_linkedin,
             "final_score_raw": score_raw,
+            "final_score": score_result["final_score"],
             "industry_score": score_result["industry_score"],
             "stage_score": score_result.get("stage_score", 0),
             "location_score": score_result["location_score"],
-            "description_score": score_result["description_score"],
+            "fundraising_score": score_result["fundraising_score"],
+            "linkedin_score": score_result["linkedin_score"],
+            "linkedin_matched_count": score_result["linkedin_matched_count"],
+            "linkedin_contribution": score_result["linkedin_contribution"],
+            "linkedin_matches": score_result["linkedin_matches"],
+            "rubric": score_result["rubric"],
+            "weighted_contributions": score_result["weighted_contributions"],
+            "original_rubric_score": score_result["original_rubric_score"],
+            "linkedin_floor_applied": score_result["linkedin_floor_applied"],
             "match_reason": reason,
         })
 
     db.commit()
 
-    results = sorted(results, key=lambda x: x["final_score_raw"], reverse=True)
+    results = sorted(results, key=lambda x: x["final_score"], reverse=True)
 
     top = results[:15]
-    top_score = top[0]["final_score_raw"] if top else 0
-    for r in top:
-        raw = r["final_score_raw"]
-        r["final_score_scaled"] = round(100 * raw / top_score) if top_score else 0
-        r["final_score"] = r["final_score_scaled"]
 
     logger.info(
         "Matching startup_id=%s returned %s top investors",

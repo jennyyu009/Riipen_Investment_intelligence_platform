@@ -77,8 +77,12 @@ class InvestorMatch(Base):
     final_score = Column(Float)
     industry_score = Column(Float)
     location_score = Column(Float)
-    description_score = Column(Float)
+    fundraising_score = Column(Float)
     stage_score = Column(Float)
+    linkedin_score = Column(Float)
+    linkedin_matched_count = Column(Integer)
+    linkedin_contribution = Column(Float)
+    linkedin_matches = Column(Text)
     team_score = Column(Float)
 
     match_reason = Column(Text)

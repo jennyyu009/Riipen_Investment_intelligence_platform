@@ -412,6 +412,8 @@ export default function FounderIntakeForm() {
     linkedinUrl: "",
     currentRole: "",
     email: "",
+    location: "",
+    education: "",
     startupName: "",
     websiteUrl: "",
     stage: "",
@@ -553,6 +555,8 @@ export default function FounderIntakeForm() {
               linkedin_url: formData.linkedinUrl,
               current_role: formData.currentRole,
               email: formData.email,
+              location: formData.location,
+              education: formData.education,
             },
             startup: {
               startup_name: formData.startupName,
@@ -751,7 +755,14 @@ export default function FounderIntakeForm() {
         hasValue(match.stage_score) || hasValue(match.industry_score)
           ? `Stage score: ${Math.round(match.stage_score || 0)} / Industry score: ${Math.round(match.industry_score || 0)}`
           : "Score details unavailable from backend.",
+        hasValue(match.fundraising_score)
+          ? `Fundraising Fit: ${Math.round(match.fundraising_score)}%`
+          : "Fundraising Fit unavailable.",
       ],
+      fundraisingScore: match.fundraising_score,
+      linkedinMatches: match.linkedin_matches,
+      linkedinMatchedCount: match.linkedin_matched_count || 0,
+      linkedinContribution: match.linkedin_contribution || 0,
       relationshipPaths: match.relationshipPaths || match.relationship_paths || match.paths || [],
     };
   });
@@ -1159,6 +1170,8 @@ export default function FounderIntakeForm() {
                   <Input label="Current Role" name="currentRole" value={formData.currentRole} onChange={handleChange} />
                   <Input label="Email" name="email" type="email" value={formData.email} onChange={handleChange} icon={<Mail size={18} />} />
                   <Input label="LinkedIn URL" name="linkedinUrl" value={formData.linkedinUrl} onChange={handleChange} required icon={<Link size={18} />} placeholder="https://www.linkedin.com/in/..." />
+                  <Input label="City and Country" name="location" value={formData.location} onChange={handleChange} placeholder="Toronto, Canada" />
+                  <Input label="Education" name="education" value={formData.education} onChange={handleChange} placeholder="University and degree" />
                 </div>
               </section>
 
@@ -1841,6 +1854,8 @@ function ProfileTable({ formData }) {
             ["Current Role", formData.currentRole || "-"],
             ["Email", formData.email || "-"],
             ["LinkedIn URL", formData.linkedinUrl || "-"],
+            ["Location", formData.location || "-"],
+            ["Education", formData.education || "-"],
             ["Startup Name", formData.startupName || "-"],
             ["Website URL", formData.websiteUrl || "-"],
             ["Stage", formData.stage || "-"],
@@ -1894,7 +1909,12 @@ function MatchesPanel({ matches, matchingLoading, matchingSource }) {
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">#{index + 1}</span>
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-slate-950">{match.entity_name}</p>
-                  <p className="mt-1 text-sm text-slate-500">Fintech / Canada / Pre-seed / Seed</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Fundraising Fit: {hasValue(match.fundraising_score) ? `${Math.round(match.fundraising_score)}%` : "Unavailable"}
+                    {" / "}LinkedIn: {match.linkedin_matched_count || 0} / 4
+                    {" / "}Contribution: {Number(match.linkedin_contribution || 0).toFixed(2)}%
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">{formatLinkedInMatches(match.linkedin_matches)}</p>
                 </div>
                 <div className="sm:text-right">
                   <p className="font-semibold text-blue-700">{score}%</p>
@@ -1907,6 +1927,17 @@ function MatchesPanel({ matches, matchingLoading, matchingSource }) {
       )}
     </div>
   );
+}
+
+function formatLinkedInMatches(matches = {}) {
+  return [
+    ["Alumni", matches.alumni || matches.alumni_partial],
+    ["Industry Experience", matches.industry_experience],
+    ["Employer", matches.employer],
+    ["Geography", matches.geography],
+  ]
+    .map(([label, matched]) => `${matched ? "✓" : "✗"} ${label}`)
+    .join(" · ");
 }
 
 function InvestorDetailPanel({ investor }) {
@@ -1951,6 +1982,13 @@ function InvestorDetailPanel({ investor }) {
                 </li>
               ))}
             </ul>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <LinkedInMatchSummary
+              matches={investor.linkedinMatches}
+              matchedCount={investor.linkedinMatchedCount}
+              contribution={investor.linkedinContribution}
+            />
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm font-semibold text-slate-950">Warm Intro Path</p>
@@ -2000,6 +2038,33 @@ function InvestorDetailPanel({ investor }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function LinkedInMatchSummary({ matches = {}, matchedCount = 0, contribution = 0 }) {
+  const conditions = [
+    ["Alumni", Boolean(matches.alumni || matches.alumni_partial)],
+    ["Industry Experience", Boolean(matches.industry_experience)],
+    ["Employer", Boolean(matches.employer)],
+    ["Geography", Boolean(matches.geography)],
+  ];
+
+  return (
+    <div>
+      <p className="text-sm font-semibold text-slate-950">LinkedIn Match Summary</p>
+      <div className="mt-3 space-y-2">
+        {conditions.map(([label, matched]) => (
+          <p key={label} className={`text-sm font-medium ${matched ? "text-emerald-700" : "text-slate-500"}`}>
+            {matched ? "✓" : "✗"} {label}
+            {label === "Alumni" && matches.alumni_partial ? " (university only)" : ""}
+          </p>
+        ))}
+      </div>
+      <p className="mt-3 text-sm font-semibold text-slate-700">Matched: {matchedCount} / 4</p>
+      <p className="mt-1 text-xs text-slate-500">
+        Final score contribution: {Number(contribution || 0).toFixed(2)}%
+      </p>
     </div>
   );
 }

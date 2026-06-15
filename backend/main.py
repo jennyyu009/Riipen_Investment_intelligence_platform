@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import json
 
 from fastapi import FastAPI, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -143,7 +144,11 @@ def get_matches(startup_id: int, db: Session = Depends(get_db)):
             "industry_score": match.industry_score,
             "stage_score": match.stage_score,
             "location_score": match.location_score,
-            "description_score": match.description_score,
+            "fundraising_score": match.fundraising_score,
+            "linkedin_score": match.linkedin_score,
+            "linkedin_matched_count": match.linkedin_matched_count or 0,
+            "linkedin_contribution": match.linkedin_contribution or 0,
+            "linkedin_matches": json.loads(match.linkedin_matches) if match.linkedin_matches else {},
             "match_reason": match.match_reason
         }
         for match, investor in matches

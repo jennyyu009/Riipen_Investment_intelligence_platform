@@ -32,19 +32,28 @@ def ensure_database_schema():
         column["name"]
         for column in inspector.get_columns("investor_matches")
     }
-    missing_float_columns = [
-        column
-        for column in ("stage_score", "team_score")
+    required_columns = {
+        "stage_score": "FLOAT",
+        "team_score": "FLOAT",
+        "fundraising_score": "FLOAT",
+        "linkedin_score": "FLOAT",
+        "linkedin_matched_count": "INTEGER",
+        "linkedin_contribution": "FLOAT",
+        "linkedin_matches": "TEXT",
+    }
+    missing_columns = {
+        column: sql_type
+        for column, sql_type in required_columns.items()
         if column not in existing_columns
-    ]
+    }
 
-    if not missing_float_columns:
+    if not missing_columns:
         return
 
     with engine.begin() as connection:
-        for column in missing_float_columns:
+        for column, sql_type in missing_columns.items():
             connection.execute(
-                text(f"ALTER TABLE investor_matches ADD COLUMN {column} FLOAT")
+                text(f"ALTER TABLE investor_matches ADD COLUMN {column} {sql_type}")
             )
 
 
