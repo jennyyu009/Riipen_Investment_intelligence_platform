@@ -3,12 +3,14 @@ import re
 import logging
 import json
 
-from fastapi import FastAPI, Depends, Response
+from fastapi import FastAPI, Depends, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 try:
-    from .database import Base, engine, ensure_database_schema, get_db
+    from .database import Base, SessionLocal, engine, ensure_database_schema, get_db
+    from .config import ENABLE_HEAVY_PROCESSING, MAX_PITCH_DECK_BYTES
+    from .enriched_data import sync_enriched_investors
     from .models import Founder, Startup, Investor, InvestorMatch
     from .schemas import FounderStartupCreate, InvestorEnrichmentRequest
     from .investor_enrichment import enrich_investor, investor_data
@@ -16,7 +18,9 @@ try:
     from .relationship_intelligence.api import router as relationship_intelligence_router
     from .seed_investors import ensure_investors_seeded
 except ImportError:
-    from database import Base, engine, ensure_database_schema, get_db
+    from database import Base, SessionLocal, engine, ensure_database_schema, get_db
+    from config import ENABLE_HEAVY_PROCESSING, MAX_PITCH_DECK_BYTES
+    from enriched_data import sync_enriched_investors
     from models import Founder, Startup, Investor, InvestorMatch
     from schemas import FounderStartupCreate, InvestorEnrichmentRequest
     from investor_enrichment import enrich_investor, investor_data
@@ -58,8 +62,17 @@ app.include_router(relationship_intelligence_router)
 
 @app.on_event("startup")
 def seed_empty_investor_database():
-    investor_count = ensure_investors_seeded()
-    logger.info("Backend startup completed with %s investors loaded", investor_count)
+    if ENABLE_HEAVY_PROCESSING:
+        investor_count = ensure_investors_seeded()
+        source = "local database/CSV"
+    else:
+        db = SessionLocal()
+        try:
+            investor_count = sync_enriched_investors(db)
+        finally:
+            db.close()
+        source = "pre-enriched JSON"
+    logger.info("Backend startup completed with %s investors loaded from %s", investor_count, source)
 
 
 @app.middleware("http")
@@ -100,6 +113,9 @@ def home(db: Session = Depends(get_db)):
 
 @app.post("/submit-founder")
 def submit_founder(data: FounderStartupCreate, db: Session = Depends(get_db)):
+    if data.startup.pitch_deck_url and not data.startup.pitch_deck_url.lower().endswith(".pdf"):
+        raise HTTPException(status_code=415, detail="Only PDF pitch deck files are accepted.")
+
     founder = Founder(**data.founder.dict())
     db.add(founder)
     db.commit()
@@ -130,8 +146,9 @@ def enrich_investors(data: InvestorEnrichmentRequest, db: Session = Depends(get_
     investor_ids = list(dict.fromkeys(data.investor_ids))[:15]
     investors = db.query(Investor).filter(Investor.id.in_(investor_ids)).all()
 
-    for investor in investors:
-        enrich_investor(investor)
+    if ENABLE_HEAVY_PROCESSING:
+        for investor in investors:
+            enrich_investor(investor)
 
     db.commit()
     for investor in investors:
@@ -139,6 +156,26 @@ def enrich_investors(data: InvestorEnrichmentRequest, db: Session = Depends(get_
 
     return {
         "investors": [investor_data(investor) for investor in investors],
+    }
+
+
+@app.post("/pitch-deck/validate")
+async def validate_pitch_deck(file: UploadFile = File(...)):
+    filename = file.filename or "pitch-deck.pdf"
+    is_pdf = file.content_type == "application/pdf" or filename.lower().endswith(".pdf")
+    if not is_pdf:
+        raise HTTPException(status_code=415, detail="Only PDF files are accepted.")
+
+    size = 0
+    while chunk := await file.read(1024 * 1024):
+        size += len(chunk)
+        if size > MAX_PITCH_DECK_BYTES:
+            raise HTTPException(status_code=413, detail="Pitch deck exceeds the maximum file size of 10MB.")
+
+    return {
+        "filename": filename,
+        "size": size,
+        "message": "Pitch deck is a valid PDF within the 10MB limit.",
     }
 
 

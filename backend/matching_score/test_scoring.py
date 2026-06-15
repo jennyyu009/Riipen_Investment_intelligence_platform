@@ -114,11 +114,14 @@ def test_linkedin_profile_conditions():
         "backend.matching_score.scoring.crawl_linkedin_profile",
         side_effect=lambda url: profiles.get(url, ""),
     ):
-        result = linkedin_match_summary(
-            founder(linkedin_url="https://linkedin.com/in/founder"),
-            investor(contact_1_linkedin="https://linkedin.com/in/investor"),
-            ["fintech"],
-        )
+            result = linkedin_match_summary(
+                founder(linkedin_url="https://linkedin.com/in/founder"),
+                investor(
+                    contact_1_linkedin="https://linkedin.com/in/investor",
+                    linkedin_profile_text=investor_profile,
+                ),
+                ["fintech"],
+            )
 
     assert result == {
         "alumni": True,
@@ -138,3 +141,17 @@ def test_linkedin_crawl_failure_returns_no_match():
         )
 
     assert not any(result.values())
+
+
+def test_lightweight_scoring_does_not_crawl_investor_linkedin_profiles():
+    with patch(
+        "backend.matching_score.scoring.crawl_linkedin_profile",
+        return_value="## Experience\nNorthstar Bank\nToronto, Canada",
+    ) as crawl:
+        linkedin_match_summary(
+            founder(linkedin_url="https://linkedin.com/in/founder"),
+            investor(contact_1_linkedin="https://linkedin.com/in/investor"),
+            ["fintech"],
+        )
+
+    crawl.assert_called_once_with("https://linkedin.com/in/founder")

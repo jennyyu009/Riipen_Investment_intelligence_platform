@@ -1,15 +1,14 @@
-import os
 import numpy as np
 
-USE_LIGHTWEIGHT = os.getenv(
-    "LIGHTWEIGHT_DEPLOYMENT",
-    "false"
-).lower() == "true"
+try:
+    from .config import ENABLE_EMBEDDING_MODEL
+except ImportError:
+    from config import ENABLE_EMBEDDING_MODEL
 
 _model = None
 
 
-if not USE_LIGHTWEIGHT:
+if ENABLE_EMBEDDING_MODEL:
 
     from sentence_transformers import SentenceTransformer
 

@@ -13,3 +13,9 @@ services:
         sync: false
       - key: LIGHTWEIGHT_DEPLOYMENT
         value: "true"
+      - key: ENABLE_HEAVY_PROCESSING
+        value: "false"
+      - key: ENABLE_CRAWL_ENRICHMENT
+        value: "false"
+      - key: ENABLE_EMBEDDING_MODEL
+        value: "false"

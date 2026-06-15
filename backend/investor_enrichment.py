@@ -191,6 +191,19 @@ def enrich_investor(investor, force=False):
     investor.twitter_url = investor.twitter_url or first_matching_url(text, SOCIAL_DOMAINS["twitter"])
     investor.crunchbase_url = investor.crunchbase_url or first_matching_url(text, SOCIAL_DOMAINS["crunchbase"])
     investor.region = investor.region or infer_region(investor.hq_country, investor.location_city, text)
+    linkedin_urls = [
+        investor.company_linkedin,
+        investor.contact_1_linkedin,
+        investor.contact_2_linkedin,
+    ]
+    linkedin_profiles = [
+        crawl_website(url)
+        for url in linkedin_urls
+        if url
+    ]
+    investor.linkedin_profile_text = getattr(investor, "linkedin_profile_text", "") or "\n\n".join(
+        profile for profile in linkedin_profiles if profile
+    )
     investor.enrichment_status = "complete"
     investor.enriched_at = datetime.now(timezone.utc)
     return investor
@@ -221,4 +234,5 @@ def investor_data(investor):
         "contact_2_email": investor.contact_2_email,
         "contact_2_linkedin": investor.contact_2_linkedin,
         "enrichment_status": investor.enrichment_status,
+        "linkedin_profile_text": getattr(investor, "linkedin_profile_text", ""),
     }

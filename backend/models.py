@@ -56,6 +56,7 @@ class Investor(Base):
     region = Column(String)
     enrichment_status = Column(String)
     enriched_at = Column(DateTime(timezone=True))
+    linkedin_profile_text = Column(Text)
 
     contact_1_name = Column(String)
     contact_1_designation = Column(String)

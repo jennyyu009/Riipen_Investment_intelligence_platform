@@ -6,8 +6,12 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 try:
+    from ..config import ENABLE_HEAVY_PROCESSING
+    from ..precomputed_relationships import lookup_precomputed_relationships
     from .relationship_intelligence import run_relationship_intelligence
 except ImportError:
+    from config import ENABLE_HEAVY_PROCESSING
+    from precomputed_relationships import lookup_precomputed_relationships
     from relationship_intelligence.relationship_intelligence import run_relationship_intelligence
 
 router = APIRouter()
@@ -33,6 +37,9 @@ def _save_text_to_temp(content: str, suffix: str) -> str:
 
 @router.post("/relationship-intelligence")
 def relationship_intelligence(payload: RelationshipIntelligenceRequest):
+    if not ENABLE_HEAVY_PROCESSING:
+        return lookup_precomputed_relationships(payload.founder_data, payload.top_investors)
+
     connection_path = None
     messages_path = None
 

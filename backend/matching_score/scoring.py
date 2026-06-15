@@ -1,6 +1,7 @@
 import re
 
 try:
+    from ..config import ENABLE_HEAVY_PROCESSING
     from ..website_utils import crawl_website
     from ..embedding_utils import cosine_similarity
     from ..linkedin_utils import (
@@ -11,6 +12,7 @@ try:
         extract_locations,
     )
 except ImportError:
+    from config import ENABLE_HEAVY_PROCESSING
     from website_utils import crawl_website
     from embedding_utils import cosine_similarity
     from linkedin_utils import (
@@ -132,11 +134,15 @@ def linkedin_match_summary(founder, investor, investor_focus_industries):
         normalize(getattr(investor, "contact_1_linkedin", "")),
         normalize(getattr(investor, "contact_2_linkedin", "")),
     ]
-    investor_profiles = [
-        profile
-        for profile in (crawl_linkedin_profile(url) for url in investor_urls if url)
-        if profile
-    ]
+    if ENABLE_HEAVY_PROCESSING:
+        investor_profiles = [
+            profile
+            for profile in (crawl_linkedin_profile(url) for url in investor_urls if url)
+            if profile
+        ]
+    else:
+        precomputed_profile = getattr(investor, "linkedin_profile_text", "")
+        investor_profiles = [precomputed_profile] if precomputed_profile else []
 
     # LinkedIn blocks are treated as no match and never affect the base rubric.
     if not founder_profile or not investor_profiles:
@@ -205,7 +211,7 @@ def calculate_investor_score(startup, investor, founder=None, connections=None, 
     startup_preference = normalize(getattr(startup, "fundraising_preference", ""))
     founder_location = normalize(getattr(founder, "location", "")) if founder else ""
 
-    investor_website_text = crawl_website(investor_website)
+    investor_website_text = crawl_website(investor_website) if ENABLE_HEAVY_PROCESSING else ""
     investor_full_text = " ".join([
         investor_description,
         investor_website_text,

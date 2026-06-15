@@ -15,7 +15,17 @@ export async function apiFetch(path: string, options?: RequestInit) {
 
   if (!response.ok) {
     console.error(`[API] ${response.status} ${url}`);
-    throw new Error(`API request failed: ${response.status}`);
+    const text = await response.text();
+    let message = `API request failed: ${response.status}`;
+    if (text) {
+      try {
+        const data = JSON.parse(text);
+        message = data.detail || data.message || message;
+      } catch {
+        message = text;
+      }
+    }
+    throw new Error(message);
   }
 
   const text = await response.text();

@@ -42,6 +42,7 @@ import { apiFetch } from "./src/lib/api";
 
 const PAGE_STORAGE_KEY = "founderInvestorMatchPage";
 const VALID_PAGES = new Set(["landing", "form", "dashboard"]);
+const MAX_PITCH_DECK_BYTES = 10 * 1024 * 1024;
 
 const getInitialPage = () => {
   if (typeof window === "undefined") return "landing";
@@ -689,22 +690,39 @@ export default function FounderIntakeForm() {
     }));
   };
 
-  const handlePitchDeckChange = (e) => {
+  const handlePitchDeckChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
     if (!isPdf) {
-      setDeckError("Pitch deck only accepts PDF files.");
+      setDeckError("Only PDF files are accepted.");
       e.target.value = "";
       return;
     }
 
-    setDeckError("");
-    setFormData((prev) => ({
-      ...prev,
-      pitchDeck: file,
-    }));
+    if (file.size > MAX_PITCH_DECK_BYTES) {
+      setDeckError("Pitch deck exceeds the maximum file size of 10MB.");
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      const uploadData = new FormData();
+      uploadData.append("file", file);
+      await apiFetch("/pitch-deck/validate", {
+        method: "POST",
+        body: uploadData,
+      });
+      setDeckError("");
+      setFormData((prev) => ({
+        ...prev,
+        pitchDeck: file,
+      }));
+    } catch (error) {
+      setDeckError(error.message || "Pitch deck validation failed.");
+      e.target.value = "";
+    }
   };
 
   const openPanel = (panel) => {
@@ -1326,7 +1344,7 @@ export default function FounderIntakeForm() {
               <section className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                 <Upload className="mx-auto mb-3" size={30} />
                 <h2 className="text-lg font-semibold">Upload Your Pitch Deck</h2>
-                <p className="mt-1 text-sm text-slate-500">PDF only</p>
+                <p className="mt-1 text-sm text-slate-500">Only PDF files are accepted. Maximum file size: 10MB.</p>
                 <input
                   type="file"
                   name="pitchDeck"
@@ -1952,7 +1970,7 @@ function PitchDeckStatus({ deckBoost, pitchDeck, deckError, onPitchDeckChange })
       </div>
 
       <p className="mt-4 text-sm leading-6 text-slate-300">
-        Upload your pitch deck to improve investor ranking quality.
+        Upload your pitch deck to improve investor ranking quality. Only PDF files are accepted. Maximum file size: 10MB.
       </p>
 
       <label className="mt-5 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-[#07182f] transition hover:bg-blue-50">

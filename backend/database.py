@@ -42,6 +42,7 @@ def ensure_database_schema():
             "region": "VARCHAR",
             "enrichment_status": "VARCHAR",
             "enriched_at": "TIMESTAMP",
+            "linkedin_profile_text": "TEXT",
         },
     }
 

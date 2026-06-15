@@ -87,12 +87,12 @@ def _section_lines(text, section):
 
 
 @lru_cache(maxsize=512)
-def crawl_linkedin_profile(url):
+def crawl_linkedin_profile(url, allow_online=True):
     """Crawl a LinkedIn URL using the same failure-tolerant Crawl4AI pipeline as websites."""
     if not url or "linkedin.com" not in url.lower():
         return ""
     try:
-        return crawl_website(url)
+        return crawl_website(url, allow_online=allow_online, timeout_seconds=15)
     except Exception:
         return ""
 
