@@ -1651,10 +1651,10 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoa
   const [filters, setFilters] = useState({ stage: [], location: [], type: [], focus: [], connection: [], saved: [] });
 
   const options = useMemo(() => ({
-    stage: [...new Set(matches.flatMap((item) => investorList(item, ["focus_stages", "stages"])))],
+    stage: [...new Set(matches.flatMap((item) => investorList(item, ["top_3_stages", "focus_stages", "stages"])))],
     location: [...new Set(matches.flatMap((item) => [item.hq_country, item.location_city].filter(Boolean)))],
     type: [...new Set(matches.map((item) => item.investor_type).filter(Boolean))],
-    focus: [...new Set(matches.flatMap((item) => investorList(item, ["focus_industries", "industries"])))],
+    focus: [...new Set(matches.flatMap((item) => investorList(item, ["top_3_industries", "focus_industries", "industries"])))],
     connection: ["Warm intro available", "No warm intro path"],
     saved: ["Selected investors"],
   }), [matches]);
@@ -1663,13 +1663,14 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoa
   const filteredMatches = useMemo(() => matches.filter((match) => {
     const searchable = [
       match.entity_name, match.investor_type, match.hq_country, match.location_city, match.description,
-      ...investorList(match, ["focus_industries", "industries", "focus_stages", "stages", "focus_geographies"]),
+      match.top_industry_match, match.top_stage_match, match.top_country_match,
+      ...investorList(match, ["top_3_industries", "top_3_stages", "top_3_countries", "focus_industries", "industries", "focus_stages", "stages", "focus_geographies"]),
     ].filter(Boolean).join(" ").toLowerCase();
     if (query && !searchable.includes(query.toLowerCase())) return false;
-    if (filters.stage.length && !filters.stage.some((value) => investorList(match, ["focus_stages", "stages"]).includes(value))) return false;
+    if (filters.stage.length && !filters.stage.some((value) => investorList(match, ["top_3_stages", "focus_stages", "stages"]).includes(value))) return false;
     if (filters.location.length && !filters.location.includes(match.hq_country) && !filters.location.includes(match.location_city)) return false;
     if (filters.type.length && !filters.type.includes(match.investor_type)) return false;
-    if (filters.focus.length && !filters.focus.some((value) => investorList(match, ["focus_industries", "industries"]).includes(value))) return false;
+    if (filters.focus.length && !filters.focus.some((value) => investorList(match, ["top_3_industries", "focus_industries", "industries"]).includes(value))) return false;
     if (filters.connection.includes("Warm intro available") && !hasWarmIntro(match)) return false;
     if (filters.connection.includes("No warm intro path") && hasWarmIntro(match)) return false;
     if (filters.saved.length && !selectedRows.includes(match.investor_id)) return false;
@@ -1682,9 +1683,9 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoa
     const rows = filteredMatches.map((match) => [
       match.entity_name,
       investorValue(match, ["contact_1_email", "contact_2_email", "email"]) || "",
-      match.industry_score || "",
-      match.stage_score || "",
-      match.location_score || "",
+      match.top_industry_match || "",
+      match.top_stage_match || "",
+      match.top_country_match || "",
       match.hq_country || "",
       match.location_city || "",
     ]);
@@ -1746,9 +1747,9 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoa
                 const twitter = investorValue(match, ["twitter", "twitter_url", "x_url"]);
                 const crunchbase = investorValue(match, ["crunchbase", "crunchbase_url"]);
                 const website = investorValue(match, ["website", "website_url"]);
-                const industries = investorList(match, ["focus_industries", "industries"]).slice(0, 3);
-                const stages = investorList(match, ["focus_stages", "stages"]).slice(0, 3);
-                const countries = investorList(match, ["focus_geographies", "countries"]).slice(0, 3);
+                const industries = investorList(match, ["top_3_industries", "focus_industries", "industries"]).slice(0, 3);
+                const stages = investorList(match, ["top_3_stages", "focus_stages", "stages"]).slice(0, 3);
+                const countries = investorList(match, ["top_3_countries", "focus_geographies", "countries"]).slice(0, 3);
                 const warmIntro = hasWarmIntro(match);
                 return (
                   <tr key={match.investor_id || match.entity_name} className="align-middle hover:bg-blue-50/30">
@@ -1761,9 +1762,9 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoa
                     </td>
                     <td className="px-4 py-4">{email ? <a href={`mailto:${email}`} className="font-medium text-blue-700 hover:underline">{email}</a> : <LockedValue />}</td>
                     <td className="px-4 py-4"><div className="flex gap-2">{linkedin && <a href={linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn" title="LinkedIn" className="text-blue-700"><Link size={17} /></a>}{twitter && <a href={twitter} target="_blank" rel="noreferrer" aria-label="Twitter or X" title="Twitter / X" className="text-slate-700"><MessageCircle size={17} /></a>}{crunchbase && <a href={crunchbase} target="_blank" rel="noreferrer" aria-label="Crunchbase" title="Crunchbase" className="text-blue-700"><Building2 size={17} /></a>}{website && <a href={website} target="_blank" rel="noreferrer" aria-label="Website" title="Website" className="text-slate-700"><Globe2 size={17} /></a>}{!linkedin && !twitter && !crunchbase && !website && <LockedValue />}</div></td>
-                    <td className="px-4 py-4"><MatchPill score={match.industry_score} /></td>
-                    <td className="px-4 py-4"><MatchPill score={match.stage_score} /></td>
-                    <td className="px-4 py-4"><MatchPill score={match.location_score} /></td>
+                    <td className="truncate px-4 py-4"><LockedValue value={match.top_industry_match}>{match.top_industry_match}</LockedValue></td>
+                    <td className="truncate px-4 py-4"><LockedValue value={match.top_stage_match}>{match.top_stage_match}</LockedValue></td>
+                    <td className="truncate px-4 py-4"><LockedValue value={match.top_country_match}>{match.top_country_match}</LockedValue></td>
                     <td className="truncate px-4 py-4" title={industries.join(", ")}><LockedValue value={industries.join(", ")}>{industries.join(", ")}</LockedValue></td>
                     <td className="truncate px-4 py-4" title={stages.join(", ")}><LockedValue value={stages.join(", ")}>{stages.join(", ")}</LockedValue></td>
                     <td className="truncate px-4 py-4" title={countries.join(", ")}><LockedValue value={countries.join(", ")}>{countries.join(", ")}</LockedValue></td>

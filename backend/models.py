@@ -57,6 +57,13 @@ class Investor(Base):
     enrichment_status = Column(String)
     enriched_at = Column(DateTime(timezone=True))
     linkedin_profile_text = Column(Text)
+    top_industry_match = Column(String)
+    top_stage_match = Column(String)
+    top_country_match = Column(String)
+    top_3_industries = Column(Text)
+    top_3_stages = Column(Text)
+    top_3_countries = Column(Text)
+    portfolio_companies = Column(Text)
 
     contact_1_name = Column(String)
     contact_1_designation = Column(String)

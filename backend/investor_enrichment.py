@@ -1,4 +1,5 @@
 import re
+import json
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -10,6 +11,7 @@ try:
         infer_focus_stages,
     )
     from .website_utils import crawl_website
+    from .investor_focus import enrich_focus_from_website
 except ImportError:
     from embedding_utils import cosine_similarity
     from seed_investors import (
@@ -18,6 +20,7 @@ except ImportError:
         infer_focus_stages,
     )
     from website_utils import crawl_website
+    from investor_focus import enrich_focus_from_website
 
 
 URL_PATTERN = re.compile(r"https?://[^\s)\]}>\"']+", re.IGNORECASE)
@@ -159,6 +162,9 @@ def enrich_investor(investor, force=False):
         investor.hq_country, investor.location_city,
     )
     investor.region = investor.region or infer_region(investor.hq_country, investor.location_city, stored_text)
+    if force or not getattr(investor, "top_industry_match", ""):
+        focus_result = enrich_focus_from_website(investor)
+        apply_focus_result(investor, focus_result)
 
     source_url = investor.website or investor.company_linkedin or investor.contact_1_linkedin
     if not source_url:
@@ -209,6 +215,31 @@ def enrich_investor(investor, force=False):
     return investor
 
 
+def apply_focus_result(investor, focus_result):
+    investor.top_industry_match = focus_result.get("top_industry_match", "")
+    investor.top_stage_match = focus_result.get("top_stage_match", "")
+    investor.top_country_match = focus_result.get("top_country_match", "")
+    investor.top_3_industries = json.dumps(focus_result.get("top_3_industries", []), ensure_ascii=False)
+    investor.top_3_stages = json.dumps(focus_result.get("top_3_stages", []), ensure_ascii=False)
+    investor.top_3_countries = json.dumps(focus_result.get("top_3_countries", []), ensure_ascii=False)
+    investor.portfolio_companies = json.dumps(focus_result.get("portfolio_companies", []), ensure_ascii=False)
+    investor.focus_industries = investor.focus_industries or ",".join(focus_result.get("top_3_industries", []))
+    investor.focus_stages = investor.focus_stages or ",".join(focus_result.get("top_3_stages", []))
+    investor.focus_geographies = investor.focus_geographies or ",".join(focus_result.get("top_3_countries", []))
+
+
+def json_list(value):
+    if isinstance(value, list):
+        return value
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else []
+    except (TypeError, ValueError):
+        return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
 def investor_data(investor):
     return {
         "investor_id": investor.id,
@@ -235,4 +266,11 @@ def investor_data(investor):
         "contact_2_linkedin": investor.contact_2_linkedin,
         "enrichment_status": investor.enrichment_status,
         "linkedin_profile_text": getattr(investor, "linkedin_profile_text", ""),
+        "top_industry_match": getattr(investor, "top_industry_match", ""),
+        "top_stage_match": getattr(investor, "top_stage_match", ""),
+        "top_country_match": getattr(investor, "top_country_match", ""),
+        "top_3_industries": json_list(getattr(investor, "top_3_industries", "")),
+        "top_3_stages": json_list(getattr(investor, "top_3_stages", "")),
+        "top_3_countries": json_list(getattr(investor, "top_3_countries", "")),
+        "portfolio_companies": json_list(getattr(investor, "portfolio_companies", "")),
     }

@@ -7,7 +7,7 @@
     "hq_country": "Canada",
     "location_city": "Toronto",
     "region": "North America",
-    "focus_industries": "",
+    "focus_industries": "General Technology",
     "focus_stages": "growth",
     "focus_geographies": "canada,toronto",
     "website": "https://sixtydegreecapital.com/",
@@ -23,7 +23,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/robingaowenbo/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Growth",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Growth"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 2,
@@ -49,7 +62,23 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/johnodonoghuecfa/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "AI / Machine Learning",
+    "top_stage_match": "Growth",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "AI / Machine Learning"
+    ],
+    "top_3_stages": [
+      "Growth",
+      "Debt",
+      "Late Stage"
+    ],
+    "top_3_countries": [
+      "Canada",
+      "North America"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 3,
@@ -75,7 +104,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/brucecroxon",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Growth",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Growth",
+      "Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 4,
@@ -86,7 +129,7 @@
     "location_city": "Mountain View",
     "region": "North America",
     "focus_industries": "ai,healthtech",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "mountain view,united states",
     "website": "https://www.samsungnext.com/",
     "company_linkedin": "https://www.linkedin.com/company/samsung-next/",
@@ -101,7 +144,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/raymondliao/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "AI / Machine Learning",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "AI / Machine Learning",
+      "HealthTech",
+      "Consumer"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 5,
@@ -127,7 +185,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/barbry-mcgann-9717253/?lipi=urn%3Ali%3Apage%3Ad_flagship3_search_srp_all%3BrAWRaQ7QSbuC5IWl02a27w%3D%3D",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Enterprise Software",
+    "top_stage_match": "Growth",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "Enterprise Software",
+      "SaaS"
+    ],
+    "top_3_stages": [
+      "Growth"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 6,
@@ -153,7 +225,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/nedmay4/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "FinTech",
+    "top_stage_match": "Growth",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "FinTech"
+    ],
+    "top_3_stages": [
+      "Growth"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 7,
@@ -164,7 +249,7 @@
     "location_city": "San Francisco",
     "region": "North America",
     "focus_industries": "ai",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "san francisco,united states",
     "website": "https://www.sparkcapital.com/",
     "company_linkedin": "https://www.linkedin.com/company/spark-capital-llc",
@@ -179,7 +264,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/clay-fisher-4a044563/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "AI / Machine Learning",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "AI / Machine Learning",
+      "Future of Work",
+      "Media / Entertainment"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 8,
@@ -190,7 +290,7 @@
     "location_city": "Toronto",
     "region": "North America",
     "focus_industries": "fintech",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,toronto",
     "website": "https://portageinvest.com/blog/team/paul-desmarais-iii/",
     "company_linkedin": "https://www.linkedin.com/company/portageinvest/?originalSubdomain=ca",
@@ -205,7 +305,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/michaelamiraslani/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "FinTech",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "FinTech"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 9,
@@ -215,8 +328,8 @@
     "hq_country": "USA",
     "location_city": "Boston",
     "region": "North America",
-    "focus_industries": "",
-    "focus_stages": "",
+    "focus_industries": "General Technology",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "boston,united states",
     "website": "https://www.harbourvest.com/",
     "company_linkedin": "https://www.linkedin.com/company/harbourvest-partners/?originalSubdomain=ca",
@@ -231,7 +344,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 10,
@@ -242,7 +368,7 @@
     "location_city": "Toronto",
     "region": "North America",
     "focus_industries": "enterprise saas",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,toronto",
     "website": "https://www.klass.com/",
     "company_linkedin": "linkedin.com/in/klasscapital?originalSubdomain=ca",
@@ -257,7 +383,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/willalexanderson/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Enterprise Software",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "Enterprise Software",
+      "SaaS"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 11,
@@ -267,7 +407,7 @@
     "hq_country": "Canada",
     "location_city": "Toronto",
     "region": "North America",
-    "focus_industries": "",
+    "focus_industries": "Future of Work",
     "focus_stages": "pre-seed,seed",
     "focus_geographies": "canada,toronto",
     "website": "https://www.storytime.capital/",
@@ -283,7 +423,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/ryan-kimel-83aa5529/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Future of Work",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "Future of Work"
+    ],
+    "top_3_stages": [
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 12,
@@ -293,8 +447,8 @@
     "hq_country": "USA",
     "location_city": "Florida",
     "region": "North America",
-    "focus_industries": "",
-    "focus_stages": "",
+    "focus_industries": "General Technology",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "florida,united states",
     "website": "https://www.leadership-institute.ca/our_team/samuel-l-duboc-president-ceo-elkland-capital-inc/#:~:text=He%20is%20President%20%26%20CEO%20of,energy%2C%20marketing%20services%20and%20technology.",
     "company_linkedin": "https://www.linkedin.com/in/sam-duboc-b510a527/",
@@ -309,7 +463,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 13,
@@ -335,7 +502,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 14,
@@ -361,7 +542,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/arvind-ramanathan-94aa571b9/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 15,
@@ -372,7 +567,7 @@
     "location_city": "Virginia",
     "region": "North America",
     "focus_industries": "fintech",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "virginia,united states",
     "website": "https://www.qedinvestors.com/",
     "company_linkedin": "https://www.linkedin.com/company/qed-investors/",
@@ -387,7 +582,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/adiam-berhane/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "FinTech",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "FinTech"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 16,
@@ -413,7 +621,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://ca.linkedin.com/in/jaycrone",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "AI / Machine Learning",
+    "top_stage_match": "Growth",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "AI / Machine Learning",
+      "FinTech",
+      "Future of Work"
+    ],
+    "top_3_stages": [
+      "Growth"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 17,
@@ -423,9 +646,9 @@
     "hq_country": "",
     "location_city": "",
     "region": "",
-    "focus_industries": "",
-    "focus_stages": "",
-    "focus_geographies": "",
+    "focus_industries": "General Technology",
+    "focus_stages": "General / Multi-stage",
+    "focus_geographies": "Global",
     "website": "https://www.ycombinator.com/",
     "company_linkedin": "Not found in Website",
     "twitter_url": null,
@@ -439,7 +662,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Global",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Global"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 18,
@@ -449,8 +685,8 @@
     "hq_country": "Canada",
     "location_city": "Montreal",
     "region": "North America",
-    "focus_industries": "",
-    "focus_stages": "",
+    "focus_industries": "General Technology",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,montreal",
     "website": "",
     "company_linkedin": "",
@@ -465,7 +701,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 19,
@@ -476,7 +725,7 @@
     "location_city": "Waterloo",
     "region": "North America",
     "focus_industries": "sector agnostic",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,waterloo",
     "website": "https://www.garage.vc/",
     "company_linkedin": "https://www.linkedin.com/company/garage-capital/",
@@ -491,7 +740,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://linkedin.com/in/michaellitt",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Web3 / Blockchain",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "Web3 / Blockchain"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 20,
@@ -517,7 +779,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/sarah-sommer-14b61227/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Enterprise Software",
+    "top_stage_match": "Growth",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "Enterprise Software",
+      "Future of Work",
+      "SaaS"
+    ],
+    "top_3_stages": [
+      "Growth"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 21,
@@ -528,7 +805,7 @@
     "location_city": "Saskatoon",
     "region": "North America",
     "focus_industries": "fintech",
-    "focus_stages": "",
+    "focus_stages": "Buyout",
     "focus_geographies": "canada,saskatoon",
     "website": "https://westcapmgt.ca/",
     "company_linkedin": "https://ca.linkedin.com/company/westcap-mgt-ltd",
@@ -543,7 +820,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/bretgleeson/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "FinTech",
+    "top_stage_match": "Buyout",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "FinTech",
+      "Future of Work"
+    ],
+    "top_3_stages": [
+      "Buyout"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 22,
@@ -553,8 +844,8 @@
     "hq_country": "Canada",
     "location_city": "Alberta",
     "region": "North America",
-    "focus_industries": "",
-    "focus_stages": "",
+    "focus_industries": "General Technology",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,alberta",
     "website": "",
     "company_linkedin": "",
@@ -569,7 +860,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 23,
@@ -580,7 +884,7 @@
     "location_city": "Toronto",
     "region": "North America",
     "focus_industries": "enterprise saas",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,toronto",
     "website": "https://roachcap.com/",
     "company_linkedin": "https://www.linkedin.com/company/roachcap/",
@@ -595,7 +899,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Enterprise Software",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "Enterprise Software",
+      "General Technology",
+      "SaaS"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 24,
@@ -621,7 +940,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/borismsilver?miniProfileUrn=urn%3Ali%3Afs_miniProfile%3AACoAAAC0KUUBEewwPAXeMY5n15S2xhPUfH23cn8&lipi=urn%3Ali%3Apage%3Acompanies_company_people_index%3B07963ee5-3701-4928-bdb9-af6342666ca1",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "AI / Machine Learning",
+    "top_stage_match": "Seed",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "AI / Machine Learning"
+    ],
+    "top_3_stages": [
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 25,
@@ -631,8 +964,8 @@
     "hq_country": "USA",
     "location_city": "San Francisco",
     "region": "North America",
-    "focus_industries": "",
-    "focus_stages": "",
+    "focus_industries": "General Technology",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "san francisco,united states",
     "website": "",
     "company_linkedin": "",
@@ -647,7 +980,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 26,
@@ -657,8 +1003,8 @@
     "hq_country": "USA",
     "location_city": "New York",
     "region": "North America",
-    "focus_industries": "",
-    "focus_stages": "",
+    "focus_industries": "Real Estate / PropTech",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "new york,united states",
     "website": "https://www.wafra.com/",
     "company_linkedin": "https://www.linkedin.com/company/wafra",
@@ -673,7 +1019,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/fergus-healy-0868a114/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Real Estate / PropTech",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "Real Estate / PropTech"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 27,
@@ -684,7 +1043,7 @@
     "location_city": "Montreal",
     "region": "North America",
     "focus_industries": "sector agnostic",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,montreal",
     "website": "https://www.bkrcapital.ca/",
     "company_linkedin": "https://ca.linkedin.com/company/bkr-capital",
@@ -699,7 +1058,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/isaac-dream-maker-olowolafe-3ab86524/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 28,
@@ -710,7 +1082,7 @@
     "location_city": "",
     "region": "North America",
     "focus_industries": "ai",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada",
     "website": "https://natural-resources.canada.ca/corporate/planning-reporting/departmental-results-reports/departmental-results-reports-2016-17/sustainable-development-technology-canada-sdtc-sd-tech-fundtm",
     "company_linkedin": "",
@@ -725,7 +1097,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "AI / Machine Learning",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "AI / Machine Learning",
+      "ClimateTech"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 29,
@@ -751,7 +1137,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/madeline-barcia-b318b2160/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Enterprise Software",
+    "top_stage_match": "Growth",
+    "top_country_match": "United States",
+    "top_3_industries": [
+      "Enterprise Software",
+      "Consumer",
+      "SaaS"
+    ],
+    "top_3_stages": [
+      "Growth"
+    ],
+    "top_3_countries": [
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 30,
@@ -761,8 +1162,8 @@
     "hq_country": "Canada",
     "location_city": "Montreal",
     "region": "North America",
-    "focus_industries": "",
-    "focus_stages": "",
+    "focus_industries": "General Technology",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,montreal",
     "website": "https://commercial.bmo.com/en/ca/bmo-capital-partners/",
     "company_linkedin": "https://www.linkedin.com/company/bmo-capital-partners/",
@@ -777,7 +1178,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 31,
@@ -803,7 +1217,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/andrew-kulpa-6312866/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 32,
@@ -829,7 +1257,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/henry-gladwyn-08083036/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 33,
@@ -840,7 +1282,7 @@
     "location_city": "Vancouver",
     "region": "North America",
     "focus_industries": "ai,enterprise saas",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,vancouver",
     "website": "https://www.yaletown.com/",
     "company_linkedin": "https://ca.linkedin.com/company/yaletown-partners-inc-",
@@ -855,7 +1297,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "http://ca.linkedin.com/in/ericbukovinsky",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "AI / Machine Learning",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "AI / Machine Learning",
+      "Enterprise Software",
+      "Hardware"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 34,
@@ -881,7 +1338,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/marley-cooper-50726915/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Enterprise Software",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "Enterprise Software",
+      "SaaS"
+    ],
+    "top_3_stages": [
+      "Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 35,
@@ -891,7 +1362,7 @@
     "hq_country": "Canada",
     "location_city": "Vancouver",
     "region": "North America",
-    "focus_industries": "",
+    "focus_industries": "General Technology",
     "focus_stages": "growth,pre-seed,seed",
     "focus_geographies": "canada,vancouver",
     "website": "https://www.supernode.com/",
@@ -907,7 +1378,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Growth",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Growth",
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 36,
@@ -917,7 +1403,7 @@
     "hq_country": "Canada",
     "location_city": "Ontario",
     "region": "North America",
-    "focus_industries": "",
+    "focus_industries": "General Technology",
     "focus_stages": "pre-seed,seed",
     "focus_geographies": "canada,ontario",
     "website": "https://www.archangelnetwork.ca/",
@@ -933,7 +1419,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/ellen-qi-fang-b2532611/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 37,
@@ -943,7 +1443,7 @@
     "hq_country": "Canada",
     "location_city": "Montreal",
     "region": "North America",
-    "focus_industries": "",
+    "focus_industries": "General Technology,HealthTech",
     "focus_stages": "growth",
     "focus_geographies": "canada,montreal",
     "website": "https://www.ctisciences.com/",
@@ -959,7 +1459,22 @@
     "contact_2_email": "https://cti-life-sciences-fund.webflow.io/team/laurence-rulleau#",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "HealthTech",
+    "top_stage_match": "Growth",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "HealthTech",
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Growth"
+    ],
+    "top_3_countries": [
+      "Canada",
+      "United States"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 38,
@@ -970,7 +1485,7 @@
     "location_city": "Toronto",
     "region": "North America",
     "focus_industries": "healthtech",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,toronto",
     "website": "https://iganpartners.com/",
     "company_linkedin": "https://ca.linkedin.com/company/igan-partners",
@@ -985,7 +1500,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "HealthTech",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "HealthTech"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 39,
@@ -995,8 +1523,8 @@
     "hq_country": "Canada",
     "location_city": "Vancouver",
     "region": "North America",
-    "focus_industries": "",
-    "focus_stages": "",
+    "focus_industries": "Future of Work",
+    "focus_stages": "Buyout",
     "focus_geographies": "canada,vancouver",
     "website": "https://www.inp-capital.com/",
     "company_linkedin": "https://ca.linkedin.com/company/inp-capital",
@@ -1011,7 +1539,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/jackie-chen-66a969a3?miniProfileUrn=urn%3Ali%3Afs_miniProfile%3AACoAABYIgnIBRQrknnwbRxPHfrRng97rwSotsgU&lipi=urn%3Ali%3Apage%3Acompanies_company_people_index%3B5e0b3eb2-7fee-4566-bb0d-28d004a734b4",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Future of Work",
+    "top_stage_match": "Buyout",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "Future of Work"
+    ],
+    "top_3_stages": [
+      "Buyout"
+    ],
+    "top_3_countries": [
+      "Canada",
+      "Australia",
+      "Singapore"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 40,
@@ -1021,7 +1564,7 @@
     "hq_country": "Canada",
     "location_city": "Vancouver",
     "region": "North America",
-    "focus_industries": "",
+    "focus_industries": "General Technology",
     "focus_stages": "pre-seed,seed",
     "focus_geographies": "canada,vancouver",
     "website": "https://springimpactcapital.com/",
@@ -1037,7 +1580,21 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/olivia-hornby604/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 41,
@@ -1048,7 +1605,7 @@
     "location_city": "Alberta",
     "region": "North America",
     "focus_industries": "ai,healthtech",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,alberta",
     "website": "https://thresholdimpact.com/",
     "company_linkedin": "https://www.linkedin.com/company/threshold-impact/",
@@ -1063,7 +1620,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/jana-mike-md-phd-22152826/details/experience/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "AI / Machine Learning",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "AI / Machine Learning",
+      "HealthTech",
+      "Media / Entertainment"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 42,
@@ -1073,7 +1645,7 @@
     "hq_country": "Canada",
     "location_city": "Ontario",
     "region": "North America",
-    "focus_industries": "",
+    "focus_industries": "General Technology",
     "focus_stages": "growth",
     "focus_geographies": "canada,ontario",
     "website": "https://wittingtonventures.com/",
@@ -1089,7 +1661,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/meghgupta/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Growth",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Growth"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 43,
@@ -1115,7 +1700,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 44,
@@ -1141,7 +1739,22 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/thecraighunter/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "HealthTech",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "HealthTech",
+      "ClimateTech"
+    ],
+    "top_3_stages": [
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 45,
@@ -1151,7 +1764,7 @@
     "hq_country": "Canada",
     "location_city": "Quebec",
     "region": "North America",
-    "focus_industries": "",
+    "focus_industries": "General Technology",
     "focus_stages": "growth",
     "focus_geographies": "canada,quebec",
     "website": "https://waltercapital.ca/en/",
@@ -1167,7 +1780,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/ericdoyon",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Growth",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Growth"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 46,
@@ -1177,8 +1803,8 @@
     "hq_country": "Canada",
     "location_city": "Toronto",
     "region": "North America",
-    "focus_industries": "",
-    "focus_stages": "",
+    "focus_industries": "General Technology",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,toronto",
     "website": "https://www.whitecapvp.com/",
     "company_linkedin": "https://ca.linkedin.com/company/whitecap-venture-partners",
@@ -1193,7 +1819,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/blaine-hobson-a2118a41/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 47,
@@ -1204,7 +1843,7 @@
     "location_city": "Alberta",
     "region": "North America",
     "focus_industries": "sector agnostic",
-    "focus_stages": "",
+    "focus_stages": "General / Multi-stage",
     "focus_geographies": "canada,alberta",
     "website": "https://www.adaravc.com/",
     "company_linkedin": "https://www.linkedin.com/search/results/all/?fetchDeterministicClustersOnly=true&heroEntityKey=urn%3Ali%3Aorganization%3A81975611&keywords=adara%20venture%20capital&origin=RICH_QUERY_SUGGESTION&position=0&sid=-sv",
@@ -1219,7 +1858,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/carol-ann-williams-22103a84/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 48,
@@ -1245,7 +1897,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/kristina-notaro-96848a5a/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "AI / Machine Learning",
+    "top_stage_match": "Growth",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "AI / Machine Learning"
+    ],
+    "top_3_stages": [
+      "Growth"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 49,
@@ -1256,8 +1921,8 @@
     "location_city": "",
     "region": "",
     "focus_industries": "sector agnostic",
-    "focus_stages": "",
-    "focus_geographies": "",
+    "focus_stages": "General / Multi-stage",
+    "focus_geographies": "Global",
     "website": "https://www.aurum-holdings.com/",
     "company_linkedin": "https://www.linkedin.com/company/aurumholdings/",
     "twitter_url": null,
@@ -1271,7 +1936,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "Future of Work",
+    "top_stage_match": "General / Multi-stage",
+    "top_country_match": "Global",
+    "top_3_industries": [
+      "Future of Work"
+    ],
+    "top_3_stages": [
+      "General / Multi-stage"
+    ],
+    "top_3_countries": [
+      "Global"
+    ],
+    "portfolio_companies": []
   },
   {
     "investor_id": 50,
@@ -1297,6 +1975,20 @@
     "contact_2_email": "",
     "contact_2_linkedin": "https://www.linkedin.com/in/rob-barbara-2ba1b832/",
     "enrichment_status": "crawl_failed",
-    "linkedin_profile_text": null
+    "linkedin_profile_text": null,
+    "top_industry_match": "General Technology",
+    "top_stage_match": "Seed",
+    "top_country_match": "Canada",
+    "top_3_industries": [
+      "General Technology"
+    ],
+    "top_3_stages": [
+      "Seed",
+      "Pre-Seed"
+    ],
+    "top_3_countries": [
+      "Canada"
+    ],
+    "portfolio_companies": []
   }
 ]

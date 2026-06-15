@@ -43,6 +43,13 @@ def ensure_database_schema():
             "enrichment_status": "VARCHAR",
             "enriched_at": "TIMESTAMP",
             "linkedin_profile_text": "TEXT",
+            "top_industry_match": "VARCHAR",
+            "top_stage_match": "VARCHAR",
+            "top_country_match": "VARCHAR",
+            "top_3_industries": "TEXT",
+            "top_3_stages": "TEXT",
+            "top_3_countries": "TEXT",
+            "portfolio_companies": "TEXT",
         },
     }
 
