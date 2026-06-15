@@ -3,9 +3,11 @@ import logging
 
 try:
     from .config import ENRICHED_INVESTORS_PATH
+    from .json_fields import serialize_investor_json_fields
     from .models import Investor
 except ImportError:
     from config import ENRICHED_INVESTORS_PATH
+    from json_fields import serialize_investor_json_fields
     from models import Investor
 
 
@@ -39,6 +41,7 @@ def seed_enriched_investors(db, replace=False):
 
     for record in records:
         values = {key: value for key, value in record.items() if key in INVESTOR_FIELDS}
+        values = serialize_investor_json_fields(values)
         db.add(Investor(**values))
     db.commit()
     return len(records)
@@ -57,6 +60,7 @@ def sync_enriched_investors(db):
     }
     for record in records:
         values = {key: value for key, value in record.items() if key in INVESTOR_FIELDS}
+        values = serialize_investor_json_fields(values)
         entity_name = values.get("entity_name")
         investor = existing.get(entity_name)
         if investor:

@@ -1,5 +1,4 @@
 import re
-import json
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -12,6 +11,7 @@ try:
     )
     from .website_utils import crawl_website
     from .investor_focus import enrich_focus_from_website
+    from .json_fields import from_json_text, to_json_text
 except ImportError:
     from embedding_utils import cosine_similarity
     from seed_investors import (
@@ -21,6 +21,7 @@ except ImportError:
     )
     from website_utils import crawl_website
     from investor_focus import enrich_focus_from_website
+    from json_fields import from_json_text, to_json_text
 
 
 URL_PATTERN = re.compile(r"https?://[^\s)\]}>\"']+", re.IGNORECASE)
@@ -219,25 +220,13 @@ def apply_focus_result(investor, focus_result):
     investor.top_industry_match = focus_result.get("top_industry_match", "")
     investor.top_stage_match = focus_result.get("top_stage_match", "")
     investor.top_country_match = focus_result.get("top_country_match", "")
-    investor.top_3_industries = json.dumps(focus_result.get("top_3_industries", []), ensure_ascii=False)
-    investor.top_3_stages = json.dumps(focus_result.get("top_3_stages", []), ensure_ascii=False)
-    investor.top_3_countries = json.dumps(focus_result.get("top_3_countries", []), ensure_ascii=False)
-    investor.portfolio_companies = json.dumps(focus_result.get("portfolio_companies", []), ensure_ascii=False)
+    investor.top_3_industries = to_json_text(focus_result.get("top_3_industries", []))
+    investor.top_3_stages = to_json_text(focus_result.get("top_3_stages", []))
+    investor.top_3_countries = to_json_text(focus_result.get("top_3_countries", []))
+    investor.portfolio_companies = to_json_text(focus_result.get("portfolio_companies", []))
     investor.focus_industries = investor.focus_industries or ",".join(focus_result.get("top_3_industries", []))
     investor.focus_stages = investor.focus_stages or ",".join(focus_result.get("top_3_stages", []))
     investor.focus_geographies = investor.focus_geographies or ",".join(focus_result.get("top_3_countries", []))
-
-
-def json_list(value):
-    if isinstance(value, list):
-        return value
-    if not value:
-        return []
-    try:
-        parsed = json.loads(value)
-        return parsed if isinstance(parsed, list) else []
-    except (TypeError, ValueError):
-        return [item.strip() for item in str(value).split(",") if item.strip()]
 
 
 def investor_data(investor):
@@ -269,8 +258,8 @@ def investor_data(investor):
         "top_industry_match": getattr(investor, "top_industry_match", ""),
         "top_stage_match": getattr(investor, "top_stage_match", ""),
         "top_country_match": getattr(investor, "top_country_match", ""),
-        "top_3_industries": json_list(getattr(investor, "top_3_industries", "")),
-        "top_3_stages": json_list(getattr(investor, "top_3_stages", "")),
-        "top_3_countries": json_list(getattr(investor, "top_3_countries", "")),
-        "portfolio_companies": json_list(getattr(investor, "portfolio_companies", "")),
+        "top_3_industries": from_json_text(getattr(investor, "top_3_industries", "")),
+        "top_3_stages": from_json_text(getattr(investor, "top_3_stages", "")),
+        "top_3_countries": from_json_text(getattr(investor, "top_3_countries", "")),
+        "portfolio_companies": from_json_text(getattr(investor, "portfolio_companies", "")),
     }
