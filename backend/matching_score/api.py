@@ -6,10 +6,12 @@ from sqlalchemy.orm import Session
 
 try:
     from ..database import get_db
+    from ..investor_enrichment import investor_data
     from ..matching import calculate_investor_score
     from ..models import Founder, Investor, InvestorMatch, Startup
 except ImportError:
     from database import get_db
+    from investor_enrichment import investor_data
     from matching import calculate_investor_score
     from models import Founder, Investor, InvestorMatch, Startup
 
@@ -62,19 +64,7 @@ def match_investors(startup_id: int, db: Session = Depends(get_db)):
         db.add(match)
 
         results.append({
-            "investor_id": investor.id,
-            "entity_name": investor.entity_name,
-            "investor_type": investor.investor_type,
-            "hq_country": investor.hq_country,
-            "location_city": investor.location_city,
-            "website": investor.website,
-            "company_linkedin": investor.company_linkedin,
-            "contact_1_name": investor.contact_1_name,
-            "contact_1_designation": investor.contact_1_designation,
-            "contact_1_linkedin": investor.contact_1_linkedin,
-            "contact_2_name": investor.contact_2_name,
-            "contact_2_designation": investor.contact_2_designation,
-            "contact_2_linkedin": investor.contact_2_linkedin,
+            **investor_data(investor),
             "final_score_raw": score_raw,
             "final_score": score_result["final_score"],
             "industry_score": score_result["industry_score"],

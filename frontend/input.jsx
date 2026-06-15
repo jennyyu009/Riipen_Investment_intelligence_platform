@@ -436,6 +436,7 @@ export default function FounderIntakeForm() {
   const [missingFields, setMissingFields] = useState([]);
   const [matches, setMatches] = useState([]);
   const [matchingLoading, setMatchingLoading] = useState(false);
+  const [enrichmentLoading, setEnrichmentLoading] = useState(false);
   const [matchingSource, setMatchingSource] = useState("fallback");
   const [relationshipInsights, setRelationshipInsights] = useState([]);
   const [selectedRelationshipIndex, setSelectedRelationshipIndex] = useState(0);
@@ -460,6 +461,7 @@ export default function FounderIntakeForm() {
       text: "Upload a founder and startup profile or paste notes here. I will keep the context attached to this dashboard section.",
     },
   ]);
+  const enrichmentRequestedRef = useRef(new Set());
 
   const stages = ["Pre-seed", "Seed", "Series A", "Growth (Series B/C)", "Scale (Series D+)"];
   const industryOptions = [
@@ -643,6 +645,41 @@ export default function FounderIntakeForm() {
     setSelectedWarmIntro(nextWarmIntro);
     setSelectedInvestor(selectedMatch?.investorName || nextWarmIntro?.investorName || null);
   }, [relationshipInsights, selectedRelationshipIndex, selectedWarmPathIndex]);
+
+  useEffect(() => {
+    if (page !== "dashboard" || matchingSource !== "backend" || !matches.length) return;
+    const investorIds = matches.map((match) => match.investor_id).filter(Boolean);
+    const requestKey = investorIds.join(",");
+    if (!requestKey || enrichmentRequestedRef.current.has(requestKey)) return;
+    enrichmentRequestedRef.current.add(requestKey);
+
+    let cancelled = false;
+    const enrichMatches = async () => {
+      setEnrichmentLoading(true);
+      try {
+        const data = await apiFetch("/investors/enrich", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ investor_ids: investorIds }),
+        });
+        if (cancelled) return;
+        const enrichedById = new Map((data?.investors || []).map((investor) => [investor.investor_id, investor]));
+        setMatches((current) => current.map((match) => ({
+          ...match,
+          ...(enrichedById.get(match.investor_id) || {}),
+        })));
+      } catch (error) {
+        console.error("[Enrichment] Investor enrichment request failed", error);
+      } finally {
+        if (!cancelled) setEnrichmentLoading(false);
+      }
+    };
+
+    enrichMatches();
+    return () => {
+      cancelled = true;
+    };
+  }, [page, matchingSource, matches]);
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
@@ -1357,15 +1394,16 @@ export default function FounderIntakeForm() {
               title="My Investors"
               matches={displayedMatches}
               matchingLoading={matchingLoading}
+              enrichmentLoading={enrichmentLoading}
               relationshipInsights={relationshipInsights}
               onOpenWorkflow={openInvestorWorkflow}
-              onSettings={() => openPanel({ id: "settings", title: "Settings", subtitle: "Investor table preferences." })}
             />
           ) : dashboardView === "matching" ? (
             <SmartMatchingPage
               formData={formData}
               matches={displayedMatches}
               matchingLoading={matchingLoading}
+              enrichmentLoading={enrichmentLoading}
               matchingSource={matchingSource}
               relationshipInsights={relationshipInsights}
               onOpenWorkflow={openInvestorWorkflow}
@@ -1494,17 +1532,7 @@ function Sidebar({ userName, onLogout, onProfileClick, activeView, onViewChange,
   return (
     <>
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col overflow-y-auto border-r border-white/10 bg-[#07182f] px-4 py-5 text-white lg:flex">
-        <div className="mb-7 flex items-center gap-3 px-2">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500 text-white shadow-lg shadow-blue-950/30">
-            <Network size={23} />
-          </div>
-          <div>
-            <p className="text-xl font-bold tracking-tight">InvestorOS</p>
-            <p className="text-xs text-slate-400">Founder intelligence</p>
-          </div>
-        </div>
-
-        <nav className="space-y-1">
+        <nav className="space-y-1 pt-1">
           <button type="button" onClick={() => onViewChange("home")} className={itemClass(activeView === "home")}>
             <Home size={18} /> Home
           </button>
@@ -1553,8 +1581,7 @@ function Sidebar({ userName, onLogout, onProfileClick, activeView, onViewChange,
       </aside>
 
       <div className="sticky top-0 z-30 border-b border-slate-200 bg-[#07182f] px-4 py-3 text-white lg:hidden">
-        <div className="flex items-center justify-between gap-3">
-          <p className="font-semibold">InvestorOS</p>
+        <div className="flex items-center justify-end gap-3">
           <div className="flex gap-1">
             <button type="button" onClick={() => onViewChange("home")} className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10">Home</button>
             <button type="button" onClick={() => onViewChange("my-investors")} className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10">Investors</button>
@@ -1597,9 +1624,10 @@ function LockedValue({ value, children, className = "" }) {
   return <span className={`inline-flex items-center gap-1 text-xs text-slate-400 ${className}`} title="Not provided by the backend"><LockKeyhole size={12} /> Unavailable</span>;
 }
 
-function InvestorTableWorkspace({ title, matches, matchingLoading, relationshipInsights, onOpenWorkflow, onSettings }) {
+function InvestorTableWorkspace({ title, matches, matchingLoading, enrichmentLoading, relationshipInsights, onOpenWorkflow }) {
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedRows, setSelectedRows] = useState([]);
   const [notice, setNotice] = useState("");
   const [filters, setFilters] = useState({ stage: [], location: [], type: [], focus: [], connection: [], saved: [] });
@@ -1659,7 +1687,10 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, relationshipI
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">{title}</h1>
           <p className="mt-1 text-sm text-slate-500">{filteredMatches.length} investors shown from the current matching results.</p>
         </div>
-        {notice && <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">{notice}</p>}
+        <div className="flex items-center gap-2">
+          {enrichmentLoading && <p className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700"><Loader2 className="animate-spin" size={13} /> Enriching investor data</p>}
+          {notice && <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">{notice}</p>}
+        </div>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -1668,7 +1699,10 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, relationshipI
           <label className="flex h-10 min-w-[240px] flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm text-slate-500 sm:max-w-md">
             <Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search in results..." className="w-full bg-transparent outline-none" />
           </label>
-          <button type="button" onClick={onSettings} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Settings size={16} /> Settings</button>
+          <div className="relative">
+            <button type="button" onClick={() => setSettingsOpen((current) => !current)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Settings size={16} /> Settings</button>
+            {settingsOpen && <TableSettingsDropdown onClose={() => setSettingsOpen(false)} />}
+          </div>
           <div className="sm:ml-auto flex gap-2">
             <button type="button" onClick={() => setNotice("Email availability is based on the current backend response.")} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Mail size={16} /> Find emails</button>
             <button type="button" onClick={downloadResults} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700"><Download size={16} /> Download</button>
@@ -1692,6 +1726,7 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, relationshipI
                 const email = investorValue(match, ["contact_1_email", "contact_2_email", "email"]);
                 const linkedin = investorValue(match, ["company_linkedin", "contact_1_linkedin", "linkedin"]);
                 const twitter = investorValue(match, ["twitter", "twitter_url", "x_url"]);
+                const crunchbase = investorValue(match, ["crunchbase", "crunchbase_url"]);
                 const website = investorValue(match, ["website", "website_url"]);
                 const industries = investorList(match, ["focus_industries", "industries"]).slice(0, 3);
                 const stages = investorList(match, ["focus_stages", "stages"]).slice(0, 3);
@@ -1706,8 +1741,8 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, relationshipI
                         <div className="min-w-0"><p className="truncate font-semibold text-slate-950">{match.entity_name}</p><p className="truncate text-xs text-slate-500">{match.investor_type || "Investor"}</p>{warmIntro && <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Warm intro available</span>}</div>
                       </div>
                     </td>
-                    <td className="px-4 py-4">{email ? <a href={`mailto:${email}`} className="font-medium text-blue-700 hover:underline">{email}</a> : <button type="button" onClick={() => setNotice(`No email was provided for ${match.entity_name}.`)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600"><LockKeyhole size={12} /> Find email</button>}</td>
-                    <td className="px-4 py-4"><div className="flex gap-2">{linkedin && <a href={linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn" className="text-blue-700"><Link size={17} /></a>}{twitter && <a href={twitter} target="_blank" rel="noreferrer" aria-label="Twitter or X" className="text-slate-700"><MessageCircle size={17} /></a>}{website && <a href={website} target="_blank" rel="noreferrer" aria-label="Website" className="text-slate-700"><Globe2 size={17} /></a>}{!linkedin && !twitter && !website && <LockedValue />}</div></td>
+                    <td className="px-4 py-4">{email ? <a href={`mailto:${email}`} className="font-medium text-blue-700 hover:underline">{email}</a> : <LockedValue />}</td>
+                    <td className="px-4 py-4"><div className="flex gap-2">{linkedin && <a href={linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn" title="LinkedIn" className="text-blue-700"><Link size={17} /></a>}{twitter && <a href={twitter} target="_blank" rel="noreferrer" aria-label="Twitter or X" title="Twitter / X" className="text-slate-700"><MessageCircle size={17} /></a>}{crunchbase && <a href={crunchbase} target="_blank" rel="noreferrer" aria-label="Crunchbase" title="Crunchbase" className="text-blue-700"><Building2 size={17} /></a>}{website && <a href={website} target="_blank" rel="noreferrer" aria-label="Website" title="Website" className="text-slate-700"><Globe2 size={17} /></a>}{!linkedin && !twitter && !crunchbase && !website && <LockedValue />}</div></td>
                     <td className="px-4 py-4"><MatchPill score={match.industry_score} /></td>
                     <td className="px-4 py-4"><MatchPill score={match.stage_score} /></td>
                     <td className="px-4 py-4"><MatchPill score={match.location_score} /></td>
@@ -1715,7 +1750,7 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, relationshipI
                     <td className="truncate px-4 py-4" title={stages.join(", ")}><LockedValue value={stages.join(", ")}>{stages.join(", ")}</LockedValue></td>
                     <td className="truncate px-4 py-4" title={countries.join(", ")}><LockedValue value={countries.join(", ")}>{countries.join(", ")}</LockedValue></td>
                     <td className="truncate px-4 py-4"><LockedValue value={match.investor_type}>{match.investor_type}</LockedValue></td>
-                    <td className="truncate px-4 py-4" title={match.description || match.match_reason}><LockedValue value={match.description || match.match_reason}>{match.description || match.match_reason}</LockedValue></td>
+                    <td className="truncate px-4 py-4" title={match.description || ""}><LockedValue value={match.description}>{match.description}</LockedValue></td>
                     <td className="truncate px-4 py-4"><LockedValue value={match.hq_country}>{match.hq_country}</LockedValue></td>
                     <td className="truncate px-4 py-4"><LockedValue value={match.location_city}>{match.location_city}</LockedValue></td>
                     <td className="truncate px-4 py-4"><LockedValue value={investorValue(match, ["region", "location_region", "hq_region"])}>{investorValue(match, ["region", "location_region", "hq_region"])}</LockedValue></td>
@@ -1733,13 +1768,34 @@ function InvestorTableWorkspace({ title, matches, matchingLoading, relationshipI
   );
 }
 
+function TableSettingsDropdown({ onClose }) {
+  const dropdownRef = useRef(null);
+  useEffect(() => {
+    const closeOnOutsideClick = (event) => {
+      if (!dropdownRef.current?.contains(event.target)) onClose();
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [onClose]);
+
+  return (
+    <div ref={dropdownRef} className="absolute left-0 top-12 z-30 w-56 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+      <p className="px-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">View</p>
+      <div className="mt-2 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-3 text-sm font-semibold text-blue-800">
+        <span className="flex h-5 w-5 items-center justify-center rounded-md bg-blue-600 text-white"><CheckCircle2 size={14} /></span>
+        Table
+      </div>
+    </div>
+  );
+}
+
 function InvestorFilterPanel({ filters, setFilters, options, onClose }) {
   const [expanded, setExpanded] = useState({ saved: true, stage: true, location: true, type: true, focus: true, connection: true });
   const groups = [["saved", "Saved List"], ["stage", "Matching Stage"], ["location", "Location"], ["type", "Investor Type"], ["focus", "Investment Focus"], ["connection", "Connection Data"]];
   const toggleFilter = (group, value) => setFilters((current) => ({ ...current, [group]: current[group].includes(value) ? current[group].filter((item) => item !== value) : [...current[group], value] }));
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-sm" onMouseDown={onClose}>
-      <aside className="ml-auto h-full w-full max-w-sm overflow-y-auto bg-white p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+      <aside className="h-full w-full max-w-sm overflow-y-auto bg-white p-5 shadow-2xl lg:ml-72" onMouseDown={(event) => event.stopPropagation()}>
         <div className="mb-5 flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Refine results</p><h2 className="mt-1 text-xl font-semibold">Filters</h2></div><button type="button" onClick={onClose} className="rounded-lg bg-slate-100 p-2"><X size={18} /></button></div>
         <div className="space-y-2">
           {groups.map(([key, label]) => (
@@ -1755,9 +1811,9 @@ function InvestorFilterPanel({ filters, setFilters, options, onClose }) {
   );
 }
 
-function SmartMatchingPage({ formData, matches, matchingLoading, matchingSource, relationshipInsights, onOpenWorkflow }) {
+function SmartMatchingPage({ formData, matches, matchingLoading, enrichmentLoading, matchingSource, relationshipInsights, onOpenWorkflow }) {
   const [showResults, setShowResults] = useState(false);
-  if (showResults) return <InvestorTableWorkspace title="Matching Results" matches={matches} matchingLoading={matchingLoading} relationshipInsights={relationshipInsights} onOpenWorkflow={onOpenWorkflow} onSettings={() => {}} />;
+  if (showResults) return <InvestorTableWorkspace title="Matching Results" matches={matches} matchingLoading={matchingLoading} enrichmentLoading={enrichmentLoading} relationshipInsights={relationshipInsights} onOpenWorkflow={onOpenWorkflow} />;
   const summary = [formData.industry.join(", ") || "Industry", formData.stage || "Stage", formData.location || "Country"].join(" / ");
   const stages = [
     ["Founder profile", "Core profile and fundraising preferences"],

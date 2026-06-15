@@ -51,6 +51,11 @@ class Investor(Base):
     focus_geographies = Column(Text)
     company_linkedin = Column(Text)
     website = Column(Text)
+    twitter_url = Column(Text)
+    crunchbase_url = Column(Text)
+    region = Column(String)
+    enrichment_status = Column(String)
+    enriched_at = Column(DateTime(timezone=True))
 
     contact_1_name = Column(String)
     contact_1_designation = Column(String)

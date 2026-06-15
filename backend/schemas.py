@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import List, Optional
 
 
 class FounderCreate(BaseModel):
@@ -25,3 +25,7 @@ class StartupCreate(BaseModel):
 class FounderStartupCreate(BaseModel):
     founder: FounderCreate
     startup: StartupCreate
+
+
+class InvestorEnrichmentRequest(BaseModel):
+    investor_ids: List[int]

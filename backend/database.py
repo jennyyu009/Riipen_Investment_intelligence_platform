@@ -25,36 +25,39 @@ Base = declarative_base()
 def ensure_database_schema():
     """Apply small compatibility migrations for databases created before migrations existed."""
     inspector = inspect(engine)
-    if "investor_matches" not in inspector.get_table_names():
-        return
-
-    existing_columns = {
-        column["name"]
-        for column in inspector.get_columns("investor_matches")
+    tables = inspector.get_table_names()
+    required_by_table = {
+        "investor_matches": {
+            "stage_score": "FLOAT",
+            "team_score": "FLOAT",
+            "fundraising_score": "FLOAT",
+            "linkedin_score": "FLOAT",
+            "linkedin_matched_count": "INTEGER",
+            "linkedin_contribution": "FLOAT",
+            "linkedin_matches": "TEXT",
+        },
+        "investors": {
+            "twitter_url": "TEXT",
+            "crunchbase_url": "TEXT",
+            "region": "VARCHAR",
+            "enrichment_status": "VARCHAR",
+            "enriched_at": "TIMESTAMP",
+        },
     }
-    required_columns = {
-        "stage_score": "FLOAT",
-        "team_score": "FLOAT",
-        "fundraising_score": "FLOAT",
-        "linkedin_score": "FLOAT",
-        "linkedin_matched_count": "INTEGER",
-        "linkedin_contribution": "FLOAT",
-        "linkedin_matches": "TEXT",
-    }
-    missing_columns = {
-        column: sql_type
-        for column, sql_type in required_columns.items()
-        if column not in existing_columns
-    }
-
-    if not missing_columns:
-        return
 
     with engine.begin() as connection:
-        for column, sql_type in missing_columns.items():
-            connection.execute(
-                text(f"ALTER TABLE investor_matches ADD COLUMN {column} {sql_type}")
-            )
+        for table, required_columns in required_by_table.items():
+            if table not in tables:
+                continue
+            existing_columns = {
+                column["name"]
+                for column in inspector.get_columns(table)
+            }
+            for column, sql_type in required_columns.items():
+                if column not in existing_columns:
+                    connection.execute(
+                        text(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
+                    )
 
 
 def get_db():

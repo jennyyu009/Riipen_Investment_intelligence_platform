@@ -10,14 +10,16 @@ from sqlalchemy.orm import Session
 try:
     from .database import Base, engine, ensure_database_schema, get_db
     from .models import Founder, Startup, Investor, InvestorMatch
-    from .schemas import FounderStartupCreate
+    from .schemas import FounderStartupCreate, InvestorEnrichmentRequest
+    from .investor_enrichment import enrich_investor, investor_data
     from .matching_score.api import router as matching_score_router
     from .relationship_intelligence.api import router as relationship_intelligence_router
     from .seed_investors import ensure_investors_seeded
 except ImportError:
     from database import Base, engine, ensure_database_schema, get_db
     from models import Founder, Startup, Investor, InvestorMatch
-    from schemas import FounderStartupCreate
+    from schemas import FounderStartupCreate, InvestorEnrichmentRequest
+    from investor_enrichment import enrich_investor, investor_data
     from matching_score.api import router as matching_score_router
     from relationship_intelligence.api import router as relationship_intelligence_router
     from seed_investors import ensure_investors_seeded
@@ -123,6 +125,23 @@ def get_investors(db: Session = Depends(get_db)):
     return db.query(Investor).all()
 
 
+@app.post("/investors/enrich")
+def enrich_investors(data: InvestorEnrichmentRequest, db: Session = Depends(get_db)):
+    investor_ids = list(dict.fromkeys(data.investor_ids))[:15]
+    investors = db.query(Investor).filter(Investor.id.in_(investor_ids)).all()
+
+    for investor in investors:
+        enrich_investor(investor)
+
+    db.commit()
+    for investor in investors:
+        db.refresh(investor)
+
+    return {
+        "investors": [investor_data(investor) for investor in investors],
+    }
+
+
 @app.get("/matches/{startup_id}")
 def get_matches(startup_id: int, db: Session = Depends(get_db)):
     matches = (
@@ -135,11 +154,8 @@ def get_matches(startup_id: int, db: Session = Depends(get_db)):
 
     return [
         {
+            **investor_data(investor),
             "entity_name": investor.entity_name,
-            "investor_type": investor.investor_type,
-            "hq_country": investor.hq_country,
-            "location_city": investor.location_city,
-            "website": investor.website,
             "final_score": match.final_score,
             "industry_score": match.industry_score,
             "stage_score": match.stage_score,
