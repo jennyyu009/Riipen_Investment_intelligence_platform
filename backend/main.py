@@ -3,7 +3,7 @@ import re
 import logging
 import json
 
-from fastapi import FastAPI, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import FastAPI, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -14,10 +14,10 @@ try:
     from .models import Founder, Startup, Investor, InvestorMatch
     from .schemas import FounderStartupCreate, InvestorEnrichmentRequest
     from .investor_enrichment import enrich_investor, investor_data
-    from .ai_insights import analyze_startup, extract_pitch_deck_text
     from .matching_score.api import router as matching_score_router
     from .relationship_intelligence.api import router as relationship_intelligence_router
     from .seed_investors import ensure_investors_seeded
+    from .services.ai_insights_service import analyze_pitch_deck, extract_text_with_docling
 except ImportError:
     from database import Base, SessionLocal, engine, ensure_database_schema, get_db
     from config import ENABLE_HEAVY_PROCESSING, MAX_PITCH_DECK_BYTES
@@ -25,10 +25,10 @@ except ImportError:
     from models import Founder, Startup, Investor, InvestorMatch
     from schemas import FounderStartupCreate, InvestorEnrichmentRequest
     from investor_enrichment import enrich_investor, investor_data
-    from ai_insights import analyze_startup, extract_pitch_deck_text
     from matching_score.api import router as matching_score_router
     from relationship_intelligence.api import router as relationship_intelligence_router
     from seed_investors import ensure_investors_seeded
+    from services.ai_insights_service import analyze_pitch_deck, extract_text_with_docling
 
 Base.metadata.create_all(bind=engine)
 ensure_database_schema()
@@ -164,9 +164,15 @@ def enrich_investors(data: InvestorEnrichmentRequest, db: Session = Depends(get_
 @app.post("/pitch-deck/validate")
 async def validate_pitch_deck(file: UploadFile = File(...)):
     filename = file.filename or "pitch-deck.pdf"
-    is_pdf = file.content_type == "application/pdf" or filename.lower().endswith(".pdf")
-    if not is_pdf:
-        raise HTTPException(status_code=415, detail="Only PDF files are accepted.")
+    normalized_name = filename.lower()
+    is_supported = (
+        file.content_type == "application/pdf"
+        or file.content_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        or normalized_name.endswith(".pdf")
+        or normalized_name.endswith(".pptx")
+    )
+    if not is_supported:
+        raise HTTPException(status_code=415, detail="Only PDF and PPTX files are accepted.")
 
     size = 0
     while chunk := await file.read(1024 * 1024):
@@ -177,47 +183,42 @@ async def validate_pitch_deck(file: UploadFile = File(...)):
     return {
         "filename": filename,
         "size": size,
-        "message": "Pitch deck is a valid PDF within the 10MB limit.",
+        "message": "Pitch deck is a valid PDF or PPTX within the 10MB limit.",
     }
 
 
-@app.post("/ai-insights/analyze")
-async def analyze_ai_insights(
-    founder_data: str = Form(...),
-    startup_data: str = Form(...),
-    website_content: str = Form(""),
-    pitch_deck: UploadFile | None = File(None),
-):
+@app.post("/api/ai-insights")
+async def analyze_ai_insights(request: Request):
+    pitch_text = ""
     try:
-        founder_payload = json.loads(founder_data)
-        startup_payload = json.loads(startup_data)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Founder and startup data must be valid JSON.")
-
-    pitch_deck_text = ""
-    if pitch_deck:
-        file_bytes = await pitch_deck.read()
-        try:
-            pitch_deck_text = extract_pitch_deck_text(
-                file_bytes,
-                pitch_deck.filename or "pitch-deck",
-                pitch_deck.content_type or "",
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=415, detail=str(exc))
-        except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
-
-    try:
-        return analyze_startup(
-            founder_data=founder_payload,
-            startup_data=startup_payload,
-            website_content=website_content,
-            pitch_deck_text=pitch_deck_text,
-        )
+        content_type = request.headers.get("content-type", "")
+        if content_type.startswith("multipart/form-data"):
+            form = await request.form()
+            pitch_text = str(form.get("pitch_text") or "")
+            pitch_deck = form.get("pitch_deck") or form.get("file")
+            if pitch_deck and hasattr(pitch_deck, "read"):
+                file_bytes = await pitch_deck.read()
+                pitch_text = extract_text_with_docling(
+                    file_bytes,
+                    getattr(pitch_deck, "filename", "pitch-deck.pdf") or "pitch-deck.pdf",
+                )
+        else:
+            payload = await request.json()
+            pitch_text = payload.get("pitch_text", "")
     except RuntimeError as exc:
-        status_code = 503 if "OPENAI_API_KEY" in str(exc) else 502
-        raise HTTPException(status_code=status_code, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Pitch deck text or file is required.")
+
+    if not pitch_text.strip():
+        raise HTTPException(status_code=400, detail="Pitch deck text is required.")
+
+    try:
+        analysis = await analyze_pitch_deck(pitch_text)
+        return {"success": True, "analysis": analysis}
+    except Exception:
+        logger.exception("AI Insights analysis failed")
+        raise HTTPException(status_code=502, detail="AI Insights temporarily unavailable.")
 
 
 @app.get("/matches/{startup_id}")
