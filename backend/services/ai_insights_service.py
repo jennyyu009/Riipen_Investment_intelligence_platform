@@ -1,12 +1,16 @@
 import json
+import logging
 import os
 import re
+import traceback
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict
 
-MODEL_ID = "Qwen/Qwen3-8B-Instruct"
+
+MODEL_ID = os.getenv("HF_AI_INSIGHTS_MODEL", "Qwen/Qwen3-8B")
 MAX_CONTEXT_CHARS = 24000
+logger = logging.getLogger("uvicorn.error")
 SYSTEM_MESSAGE = """You are an experienced venture capital analyst and startup fundraising advisor.
 
 Your task is to evaluate startup pitch decks and provide objective fundraising feedback.
@@ -18,6 +22,11 @@ Do not invent information.
 Respond professionally and concisely.
 
 Return valid JSON only."""
+
+
+def truncate_for_log(value: Any, limit: int = 4000) -> str:
+    text = str(value or "")
+    return text if len(text) <= limit else f"{text[:limit]}... [truncated {len(text) - limit} chars]"
 
 
 def clean_pitch_text(pitch_text: str) -> str:
@@ -85,23 +94,37 @@ def prioritize_pitch_text(text: str) -> str:
 
 
 def extract_text_with_docling(file_bytes: bytes, filename: str) -> str:
+    logger.info(
+        "[AI Insights] Docling extraction requested filename=%s bytes=%s",
+        filename,
+        len(file_bytes or b""),
+    )
     try:
         from docling.document_converter import DocumentConverter
     except ImportError as exc:
+        logger.exception("[AI Insights] Docling import failed. Is docling installed in the Render environment?")
         raise RuntimeError("Docling is required for pitch deck text extraction.") from exc
 
     suffix = Path(filename or "pitch-deck.pdf").suffix or ".pdf"
-    with NamedTemporaryFile(suffix=suffix, delete=True) as temp_file:
-        temp_file.write(file_bytes)
-        temp_file.flush()
-        converter = DocumentConverter()
-        result = converter.convert(temp_file.name)
-        document = result.document
-        if hasattr(document, "export_to_markdown"):
-            return document.export_to_markdown()
-        if hasattr(document, "export_to_text"):
-            return document.export_to_text()
-        return str(document)
+    try:
+        with NamedTemporaryFile(suffix=suffix, delete=True) as temp_file:
+            temp_file.write(file_bytes)
+            temp_file.flush()
+            converter = DocumentConverter()
+            result = converter.convert(temp_file.name)
+            document = result.document
+            if hasattr(document, "export_to_markdown"):
+                text = document.export_to_markdown()
+            elif hasattr(document, "export_to_text"):
+                text = document.export_to_text()
+            else:
+                text = str(document)
+        logger.info("[AI Insights] Docling extraction complete filename=%s extracted_chars=%s", filename, len(text or ""))
+        logger.info("[AI Insights] Extracted pitch text preview=%s", truncate_for_log(text, 1200))
+        return text
+    except Exception:
+        logger.error("[AI Insights] Docling extraction failed traceback=%s", traceback.format_exc())
+        raise
 
 
 def build_prompt(pitch_text: str) -> str:
@@ -175,41 +198,94 @@ Pitch Deck Content:
 
 def parse_json_response(raw_text: str) -> Dict[str, Any]:
     text = (raw_text or "").strip()
+    logger.info("[AI Insights] Raw model response before JSON parsing=%s", truncate_for_log(text, 6000))
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
 
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
+        parsed = json.loads(text)
+        logger.info("[AI Insights] JSON parsed successfully using direct parse keys=%s", list(parsed.keys()))
+        return parsed
+    except json.JSONDecodeError as exc:
+        logger.warning(
+            "[AI Insights] Direct JSON parse failed error=%s. Trying object extraction from plain-text response.",
+            str(exc),
+        )
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if not match:
+            logger.error("[AI Insights] No JSON object found in model response. response=%s", truncate_for_log(text, 6000))
             raise
-        return json.loads(match.group(0))
+        try:
+            parsed = json.loads(match.group(0))
+            logger.info("[AI Insights] JSON parsed successfully after extracting object keys=%s", list(parsed.keys()))
+            return parsed
+        except json.JSONDecodeError:
+            logger.error(
+                "[AI Insights] Extracted JSON parse failed traceback=%s response=%s",
+                traceback.format_exc(),
+                truncate_for_log(text, 6000),
+            )
+            raise
 
 
 async def analyze_pitch_deck(pitch_text: str) -> Dict[str, Any]:
+    logger.info("[AI Insights] analyze_pitch_deck started model=%s input_chars=%s", MODEL_ID, len(pitch_text or ""))
     cleaned_text = clean_pitch_text(pitch_text)
+    logger.info("[AI Insights] Cleaned pitch text chars=%s preview=%s", len(cleaned_text or ""), truncate_for_log(cleaned_text, 1200))
     if not cleaned_text:
         raise ValueError("Pitch deck text is required.")
 
     api_key = os.getenv("HF_API_KEY")
+    logger.info("[AI Insights] HF_API_KEY loaded=%s length=%s", bool(api_key), len(api_key or ""))
     if not api_key:
         raise RuntimeError("HF_API_KEY is not configured.")
 
     from huggingface_hub import InferenceClient
 
+    prompt = build_prompt(cleaned_text)
+    logger.info(
+        "[AI Insights] Hugging Face request starting provider=hf-inference model=%s max_tokens=2200 temperature=0.2 prompt_chars=%s",
+        MODEL_ID,
+        len(prompt),
+    )
     client = InferenceClient(
         provider="hf-inference",
         api_key=api_key,
     )
-    response = client.chat.completions.create(
-        model=MODEL_ID,
-        messages=[
-            {"role": "system", "content": SYSTEM_MESSAGE},
-            {"role": "user", "content": build_prompt(cleaned_text)},
-        ],
-        temperature=0.2,
-        max_tokens=2200,
-    )
-    content = response.choices[0].message.content
-    return parse_json_response(content)
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_ID,
+            messages=[
+                {"role": "system", "content": SYSTEM_MESSAGE},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=2200,
+        )
+        logger.info("[AI Insights] Hugging Face response object=%s", truncate_for_log(response, 4000))
+    except Exception as exc:
+        response_obj = getattr(exc, "response", None)
+        status_code = getattr(response_obj, "status_code", None)
+        response_text = getattr(response_obj, "text", "") if response_obj is not None else ""
+        logger.error(
+            "[AI Insights] Hugging Face request failed model=%s status_code=%s exception=%s response_content=%s traceback=%s",
+            MODEL_ID,
+            status_code,
+            repr(exc),
+            truncate_for_log(response_text, 6000),
+            traceback.format_exc(),
+        )
+        raise
+
+    try:
+        content = response.choices[0].message.content
+        logger.info("[AI Insights] Hugging Face response status_code=%s model=%s", "not_exposed_by_InferenceClient", MODEL_ID)
+        logger.info("[AI Insights] Hugging Face raw content=%s", truncate_for_log(content, 6000))
+        return parse_json_response(content)
+    except Exception:
+        logger.error(
+            "[AI Insights] Response extraction or JSON parsing failed traceback=%s response_object=%s",
+            traceback.format_exc(),
+            truncate_for_log(response, 6000),
+        )
+        raise

@@ -2,6 +2,8 @@ import os
 import re
 import logging
 import json
+import traceback
+from uuid import uuid4
 
 from fastapi import FastAPI, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +19,7 @@ try:
     from .matching_score.api import router as matching_score_router
     from .relationship_intelligence.api import router as relationship_intelligence_router
     from .seed_investors import ensure_investors_seeded
-    from .services.ai_insights_service import analyze_pitch_deck, extract_text_with_docling
+    from .services.ai_insights_service import MODEL_ID as AI_INSIGHTS_MODEL_ID, analyze_pitch_deck, extract_text_with_docling
 except ImportError:
     from database import Base, SessionLocal, engine, ensure_database_schema, get_db
     from config import ENABLE_HEAVY_PROCESSING, MAX_PITCH_DECK_BYTES
@@ -28,7 +30,7 @@ except ImportError:
     from matching_score.api import router as matching_score_router
     from relationship_intelligence.api import router as relationship_intelligence_router
     from seed_investors import ensure_investors_seeded
-    from services.ai_insights_service import analyze_pitch_deck, extract_text_with_docling
+    from services.ai_insights_service import MODEL_ID as AI_INSIGHTS_MODEL_ID, analyze_pitch_deck, extract_text_with_docling
 
 Base.metadata.create_all(bind=engine)
 ensure_database_schema()
@@ -115,8 +117,8 @@ def home(db: Session = Depends(get_db)):
 
 @app.post("/submit-founder")
 def submit_founder(data: FounderStartupCreate, db: Session = Depends(get_db)):
-    if data.startup.pitch_deck_url and not data.startup.pitch_deck_url.lower().endswith(".pdf"):
-        raise HTTPException(status_code=415, detail="Only PDF pitch deck files are accepted.")
+    if data.startup.pitch_deck_url and not data.startup.pitch_deck_url.lower().endswith((".pdf", ".pptx")):
+        raise HTTPException(status_code=415, detail="Only PDF and PPTX pitch deck files are accepted.")
 
     founder = Founder(**data.founder.dict())
     db.add(founder)
@@ -189,35 +191,74 @@ async def validate_pitch_deck(file: UploadFile = File(...)):
 
 @app.post("/api/ai-insights")
 async def analyze_ai_insights(request: Request):
+    request_id = str(uuid4())
     pitch_text = ""
+    content_type = request.headers.get("content-type", "")
+    logger.info(
+        "[AI Insights] request_id=%s endpoint=/api/ai-insights method=POST content_type=%s hf_key_loaded=%s",
+        request_id,
+        content_type,
+        bool(os.getenv("HF_API_KEY")),
+    )
     try:
-        content_type = request.headers.get("content-type", "")
         if content_type.startswith("multipart/form-data"):
             form = await request.form()
+            logger.info("[AI Insights] request_id=%s multipart_fields=%s", request_id, list(form.keys()))
             pitch_text = str(form.get("pitch_text") or "")
             pitch_deck = form.get("pitch_deck") or form.get("file")
             if pitch_deck and hasattr(pitch_deck, "read"):
                 file_bytes = await pitch_deck.read()
+                filename = getattr(pitch_deck, "filename", "pitch-deck.pdf") or "pitch-deck.pdf"
+                upload_content_type = getattr(pitch_deck, "content_type", "")
+                logger.info(
+                    "[AI Insights] request_id=%s uploaded_file filename=%s content_type=%s bytes=%s",
+                    request_id,
+                    filename,
+                    upload_content_type,
+                    len(file_bytes or b""),
+                )
                 pitch_text = extract_text_with_docling(
                     file_bytes,
-                    getattr(pitch_deck, "filename", "pitch-deck.pdf") or "pitch-deck.pdf",
+                    filename,
                 )
         else:
             payload = await request.json()
             pitch_text = payload.get("pitch_text", "")
+            logger.info("[AI Insights] request_id=%s json_payload_keys=%s pitch_text_chars=%s", request_id, list(payload.keys()), len(pitch_text or ""))
     except RuntimeError as exc:
+        logger.error(
+            "[AI Insights] request_id=%s request parsing/extraction RuntimeError exception=%s traceback=%s",
+            request_id,
+            str(exc),
+            traceback.format_exc(),
+        )
         raise HTTPException(status_code=500, detail=str(exc))
-    except Exception:
+    except Exception as exc:
+        logger.error(
+            "[AI Insights] request_id=%s request parsing/extraction failed exception=%s traceback=%s",
+            request_id,
+            repr(exc),
+            traceback.format_exc(),
+        )
         raise HTTPException(status_code=400, detail="Pitch deck text or file is required.")
 
     if not pitch_text.strip():
+        logger.warning("[AI Insights] request_id=%s empty_pitch_text_after_extraction", request_id)
         raise HTTPException(status_code=400, detail="Pitch deck text is required.")
 
     try:
+        logger.info("[AI Insights] request_id=%s starting_model_analysis pitch_text_chars=%s", request_id, len(pitch_text or ""))
         analysis = await analyze_pitch_deck(pitch_text)
+        logger.info("[AI Insights] request_id=%s analysis_success top_level_keys=%s", request_id, list(analysis.keys()))
         return {"success": True, "analysis": analysis}
-    except Exception:
-        logger.exception("AI Insights analysis failed")
+    except Exception as exc:
+        logger.error(
+            "[AI Insights] request_id=%s analysis_failed model=%s exception=%s traceback=%s",
+            request_id,
+            AI_INSIGHTS_MODEL_ID,
+            repr(exc),
+            traceback.format_exc(),
+        )
         raise HTTPException(status_code=502, detail="AI Insights temporarily unavailable.")
 
 
