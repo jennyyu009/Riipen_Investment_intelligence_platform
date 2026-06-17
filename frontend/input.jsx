@@ -179,6 +179,12 @@ const toScore = (value) => {
   return Number.isFinite(number) ? Math.round(number) : value;
 };
 
+const normalizeInvestorRecord = (investor = {}, index = 0) => ({
+  ...investor,
+  investor_id: investor.investor_id || investor.id || index + 1,
+  entity_name: investor.entity_name || investor.investor_name || investor.name || `Investor ${index + 1}`,
+});
+
 const slugifyId = (value, fallback) =>
   String(value || fallback)
     .toLowerCase()
@@ -270,7 +276,7 @@ const normalizeWarmIntro = (entry, investorContext = {}, pathIndex = 0) => {
     .map((node, index, pathNodes) => normalizePathNode(node, index, pathNodes.length))
     .filter(Boolean);
 
-  if (!nodes.length) return null;
+  if (nodes.length < 2) return null;
 
   const explicitEdges = toArray(entry.edges || entry.pathEdges || entry.path_edges)
     .map((edge) => normalizeRelationshipEdge(edge, nodes, entry))
@@ -388,7 +394,7 @@ const getWarmIntroPathSummary = (warmIntro) => {
   return labels.join(" -> ");
 };
 
-const buildOutreachEmail = ({ formData, warmIntro, emailTone, fallbackInvestor }) => {
+const buildOutreachEmail = ({ formData, warmIntro, emailTone, fallbackInvestor, matchingScore }) => {
   const founderName = formData.name || "Founder";
   const startupName = formData.startupName || "our startup";
   const investorName = warmIntro?.investorName || fallbackInvestor || "the investor";
@@ -400,21 +406,36 @@ const buildOutreachEmail = ({ formData, warmIntro, emailTone, fallbackInvestor }
     [formData.stage, formData.industry?.join(", ")].filter(Boolean).join(" ") ||
     "a company";
   const deckLine = formData.pitchDeck ? "\n\nI can also share our pitch deck for more context." : "";
+  const fitLine = hasValue(matchingScore)
+    ? ` Our current investor fit score for this match is ${Math.round(matchingScore)}%.`
+    : "";
+  const tone = String(emailTone || "professional").toLowerCase();
 
   if (!introducerName) {
+    const bodyByTone = {
+      concise: `Hi ${investorName},\n\nI'm ${founderName}, founder of ${startupName}. We are building ${startupDescription}.${fitLine}\n\nI believe there may be a strong fit with your investment focus.${deckLine}\n\nWould you be open to a short conversation?\n\nBest,\n${founderName}`,
+      warm: `Hi ${investorName},\n\nI'm ${founderName}, founder of ${startupName}. I came across your investment focus and thought there could be a thoughtful fit with what we're building: ${startupDescription}.${fitLine}${deckLine}\n\nI'd be grateful for the chance to share more if this is relevant.\n\nBest,\n${founderName}`,
+      professional: `Hi ${investorName},\n\nI'm ${founderName}, founder of ${startupName}. We are building ${startupDescription}.${fitLine}\n\nBased on your investment focus, I believe there may be a strong fit between our company and your portfolio.${deckLine}\n\nI'd like to share more and see if this could be relevant.\n\nBest,\n${founderName}`,
+    };
     return {
       to: warmIntro?.targetContact || investorName,
       introRequestTo: "",
       subject: `Introduction: ${startupName} x ${investorName}`,
-      body: `Hi ${investorName},\n\nI'm ${founderName}, founder of ${startupName}. We are building ${startupDescription}.\n\nBased on your investment focus, I believe there may be a strong fit between our company and your portfolio.${deckLine}\n\nI'd love to share more and see if this could be relevant.\n\nBest,\n${founderName}`,
+      body: bodyByTone[tone] || bodyByTone.professional,
     };
   }
+
+  const bodyByTone = {
+    concise: `Hi ${introducerName},\n\nI noticed you may be connected to ${investorName} through ${relationshipReason}.\n\nI'm building ${startupName}: ${startupDescription}.${fitLine}\n\nWould you be comfortable making a brief introduction if relevant?${deckLine}\n\nBest,\n${founderName}`,
+    warm: `Hi ${introducerName},\n\nI hope you're doing well. I noticed you may be connected to ${investorName} through ${relationshipReason}, and I thought the context could make for a natural introduction.\n\nI'm building ${startupName}, and based on their focus and our fundraising goals, I think there may be a strong fit.${fitLine}${deckLine}\n\nWould you feel comfortable making a brief introduction if it feels appropriate?\n\nBest,\n${founderName}`,
+    professional: `Hi ${introducerName},\n\nI hope you're doing well. I noticed that you may be connected to ${investorName} through ${relationshipReason}.\n\nI'm currently building ${startupName}, and based on their investment focus and our fundraising goals, I think ${investorName} could be a strong fit.${fitLine}${deckLine}\n\nWould you feel comfortable making a brief introduction?\n\nI'm happy to send over a short forwardable blurb.\n\nBest,\n${founderName}`,
+  };
 
   return {
     to: warmIntro?.targetContact || investorName,
     introRequestTo: introducerName,
     subject: `Warm introduction to ${investorName}?`,
-    body: `Hi ${introducerName},\n\nI hope you're doing well. I noticed that you may be connected to ${investorName} through ${relationshipReason}.\n\nI'm currently building ${startupName}, and based on their investment focus and our fundraising goals, I think ${investorName} could be a strong fit.${deckLine}\n\nWould you feel comfortable making a brief introduction?\n\nI'm happy to send over a short forwardable blurb.\n\nBest,\n${founderName}`,
+    body: bodyByTone[tone] || bodyByTone.professional,
   };
 };
 
@@ -472,6 +493,9 @@ export default function FounderIntakeForm() {
   const [submitError, setSubmitError] = useState(false);
   const [missingFields, setMissingFields] = useState([]);
   const [matches, setMatches] = useState([]);
+  const [allInvestors, setAllInvestors] = useState([]);
+  const [investorDatabaseLoading, setInvestorDatabaseLoading] = useState(false);
+  const [investorDatabaseError, setInvestorDatabaseError] = useState("");
   const [matchingLoading, setMatchingLoading] = useState(false);
   const [enrichmentLoading, setEnrichmentLoading] = useState(false);
   const [matchingSource, setMatchingSource] = useState("empty");
@@ -484,7 +508,7 @@ export default function FounderIntakeForm() {
   const [selectedWarmIntro, setSelectedWarmIntro] = useState(null);
   const [selectedInvestor, setSelectedInvestor] = useState(null);
   const [generatedEmail, setGeneratedEmail] = useState({ to: "", introRequestTo: "", subject: "", body: "" });
-  const [emailTone, setEmailTone] = useState("Professional");
+  const [emailTone, setEmailTone] = useState("professional");
   const [emailNotice, setEmailNotice] = useState("");
   const [deckBoost, setDeckBoost] = useState(0);
   const [deckError, setDeckError] = useState("");
@@ -553,6 +577,34 @@ export default function FounderIntakeForm() {
 
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (page !== "dashboard") return undefined;
+
+    let cancelled = false;
+    const loadInvestors = async () => {
+      setInvestorDatabaseLoading(true);
+      setInvestorDatabaseError("");
+      try {
+        const data = await apiFetch("/investors");
+        if (cancelled) return;
+        const investorRows = Array.isArray(data) ? data : data?.investors || [];
+        setAllInvestors(investorRows.map(normalizeInvestorRecord));
+      } catch (error) {
+        if (cancelled) return;
+        console.error("[Investors] Failed to load investor database", error);
+        setAllInvestors([]);
+        setInvestorDatabaseError("Unable to load investor database. Please try again later.");
+      } finally {
+        if (!cancelled) setInvestorDatabaseLoading(false);
+      }
+    };
+
+    loadInvestors();
+    return () => {
+      cancelled = true;
+    };
+  }, [page]);
 
   useEffect(() => {
     if (page !== "dashboard") return undefined;
@@ -653,9 +705,7 @@ export default function FounderIntakeForm() {
 
         const normalizedMatches = topInvestors.length
           ? topInvestors.map((investor, index) => ({
-              ...investor,
-              investor_id: investor.investor_id || index + 1,
-              entity_name: investor.entity_name || `Investor ${index + 1}`,
+              ...normalizeInvestorRecord(investor, index),
               final_score: investor.final_score || investor.final_score_scaled || 0,
               relationshipIntelligence: investor.relationshipIntelligence || investor.relationship_intelligence,
               relationshipPaths: investor.relationshipPaths || investor.relationship_paths || investor.paths,
@@ -866,8 +916,8 @@ export default function FounderIntakeForm() {
     },
     {
       id: "pitch",
-      title: "Pitch Deck Upload",
-      subtitle: "Upload one PDF deck to enrich matching.",
+      title: "AI Pitch Coach",
+      subtitle: "Analyze and refine your pitch deck.",
       icon: <FileText size={20} />,
     },
     {
@@ -886,15 +936,23 @@ export default function FounderIntakeForm() {
 
   const dashboardUserName = formData.name || "Founder";
   const displayedMatches = matches;
+  const discoveryInvestors = allInvestors.length ? allInvestors : displayedMatches;
+  const warmIntroPathCount = relationshipInsights.reduce((total, insight) => total + (insight.warmPaths?.length || 0), 0);
   const topInvestorCards = displayedMatches.slice(0, 3).map((match) => {
     const score = Math.round(match.final_score || match.final_score_scaled || 0);
     const location = [match.location_city, match.hq_country].filter(Boolean).join(", ");
     const details = [match.investor_type, location].filter(Boolean).join(" / ");
+    const tags = [
+      investorList(match, ["top_3_industries", "focus_industries", "industries"])[0],
+      location,
+      investorList(match, ["top_3_stages", "focus_stages", "stages"])[0],
+    ].filter(Boolean);
     return {
       name: match.entity_name || "Investor",
       score,
       label: getMatchLabel(score),
       initials: getInvestorInitials(match.entity_name),
+      tags,
       bullets: [
         match.match_reason || "Matched from the current founder and startup profile.",
         details || "Investor profile returned from the backend matching model.",
@@ -915,17 +973,28 @@ export default function FounderIntakeForm() {
   const kpiCards = [
     { label: "Top Matches", value: String(displayedMatches.length), detail: matchingSource === "backend" ? "Live ranked investors" : "No ranked investors loaded", icon: <Target size={19} /> },
     { label: "Pitch Deck Impact", value: `${deckBoost}%`, detail: formData.pitchDeck ? "Lift after deck upload" : "Projected matching lift", icon: <FileText size={19} /> },
-    { label: "Warm Intro Paths", value: "24", detail: "Qualified relationship paths", icon: <Handshake size={19} /> },
-    { label: "Network Connections", value: "87", detail: "Mapped venture contacts", icon: <UsersRound size={19} /> },
+    { label: "Warm Intro Paths", value: String(warmIntroPathCount), detail: "Qualified relationship paths", icon: <Handshake size={19} /> },
+    { label: "Investor Database", value: String(discoveryInvestors.length), detail: "Loaded investor profiles", icon: <UsersRound size={19} /> },
   ];
 
   const handleConnectionDataChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const isCsv = file.type === "text/csv" || file.name.toLowerCase().endsWith(".csv");
-    if (!isCsv) {
-      setRelationshipError("Connection data must be a CSV file.");
+    const fileName = file.name.toLowerCase();
+    const isCsv = file.type === "text/csv" || fileName.endsWith(".csv");
+    const isSpreadsheet = fileName.endsWith(".xlsx") || fileName.endsWith(".xls");
+    if (!isCsv && !isSpreadsheet) {
+      setRelationshipError("Connection data must be a CSV, XLS, or XLSX file.");
+      e.target.value = "";
+      return;
+    }
+
+    if (isSpreadsheet) {
+      // TODO: Add backend spreadsheet parsing support so XLS/XLSX files can be submitted directly.
+      setConnectionDataFile(file);
+      setRelationshipInsights([]);
+      setRelationshipError("XLS/XLSX parsing is not available yet. Please export the connection data as CSV and upload it here.");
       e.target.value = "";
       return;
     }
@@ -1005,6 +1074,20 @@ export default function FounderIntakeForm() {
     setEmailNotice("");
   };
 
+  const handleSelectedInvestorChange = (investorName) => {
+    setSelectedInvestor(investorName || null);
+    const relationshipIndex = relationshipInsights.findIndex((insight) => insight.investorName === investorName);
+    if (relationshipIndex >= 0) {
+      setSelectedRelationshipIndex(relationshipIndex);
+      setSelectedWarmPathIndex(0);
+      setSelectedWarmIntro(relationshipInsights[relationshipIndex]?.warmPaths?.[0] || null);
+    } else {
+      setSelectedWarmIntro(null);
+    }
+    setGeneratedEmail({ to: "", introRequestTo: "", subject: "", body: "" });
+    setEmailNotice("");
+  };
+
   const openInvestorWorkflow = (match, workflow) => {
     const relationshipIndex = relationshipInsights.findIndex((insight) => insight.investorName === match.entity_name);
     const relationshipInsight = relationshipIndex >= 0 ? relationshipInsights[relationshipIndex] : null;
@@ -1042,6 +1125,7 @@ export default function FounderIntakeForm() {
       warmIntro: selectedWarmIntro,
       emailTone,
       fallbackInvestor: selectedInvestor,
+      matchingScore: displayedMatches.find((match) => match.entity_name === selectedInvestor)?.final_score,
     });
     setGeneratedEmail(email);
     return email;
@@ -1053,6 +1137,7 @@ export default function FounderIntakeForm() {
       warmIntro: selectedWarmIntro,
       emailTone,
       fallbackInvestor: selectedInvestor,
+      matchingScore: displayedMatches.find((match) => match.entity_name === selectedInvestor)?.final_score,
     });
     setGeneratedEmail(email);
     setEmailNotice("");
@@ -1494,6 +1579,16 @@ export default function FounderIntakeForm() {
               relationshipInsights={relationshipInsights}
               onOpenWorkflow={openInvestorWorkflow}
             />
+          ) : dashboardView === "investor-discovery" ? (
+            <InvestorDiscoveryPage
+              investors={discoveryInvestors}
+              loading={investorDatabaseLoading}
+              error={investorDatabaseError}
+              onStartOutreach={(investor) => {
+                handleSelectedInvestorChange(investor.entity_name);
+                setActivePanel({ id: "outreach", title: "Outreach Message Generator", subtitle: "Personalized investor outreach workspace." });
+              }}
+            />
           ) : dashboardView === "matching" ? (
             <SmartMatchingPage
               formData={formData}
@@ -1542,9 +1637,18 @@ export default function FounderIntakeForm() {
                       </button>
                     </div>
                     <div className="grid gap-4 2xl:grid-cols-3">
-                      {topInvestorCards.map((investor, index) => (
+                      {matchingLoading ? (
+                        <div className="col-span-full rounded-lg border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
+                          <Loader2 className="mx-auto mb-3 animate-spin text-blue-600" />
+                          Loading investor recommendations...
+                        </div>
+                      ) : topInvestorCards.length ? topInvestorCards.map((investor, index) => (
                         <InvestorCard key={investor.name} investor={investor} rank={index + 1} onViewDetails={() => openPanel({ id: "investor", title: investor.name, investor })} />
-                      ))}
+                      )) : (
+                        <div className="col-span-full rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
+                          No investor recommendations loaded yet.
+                        </div>
+                      )}
                     </div>
                   </section>
                   <section className="grid gap-4 lg:grid-cols-3">
@@ -1591,6 +1695,7 @@ export default function FounderIntakeForm() {
               setGeneratedEmail={setGeneratedEmail}
               emailTone={emailTone}
               setEmailTone={setEmailTone}
+              onInvestorSelect={handleSelectedInvestorChange}
               emailNotice={emailNotice}
               onGenerateWarmIntroEmail={handleGenerateWarmIntroEmail}
               onCopyEmail={handleCopyEmail}
@@ -1603,6 +1708,7 @@ export default function FounderIntakeForm() {
               onConnectionDataChange={handleConnectionDataChange}
               onPitchDeckChange={handlePitchDeckChange}
               onOpenOutreach={() => setActivePanel({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." })}
+              allInvestors={discoveryInvestors}
               chatMessages={chatMessages}
               chatInput={chatInput}
               setChatInput={setChatInput}
@@ -1643,9 +1749,8 @@ function Sidebar({ userName, onLogout, onProfileClick, activeView, onViewChange,
           {openSections.find && (
             <div className="space-y-1">
               <button type="button" onClick={() => onViewChange("matching")} className={itemClass(activeView === "matching")}><Target size={18} /> Matching</button>
-              <button type="button" onClick={() => onPanelClick(panels[2])} className={itemClass(false)}><Network size={18} /> Network</button>
-              <button type="button" onClick={() => onPanelClick({ id: "investor-discovery-district", title: "Investor Discovery District", subtitle: "Investor discovery workspace." })} className={itemClass(false)}><Building2 size={18} /> Investor Discovery District</button>
-              <button type="button" onClick={() => onPanelClick({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." })} className={itemClass(false)}><Send size={18} /> Outreach</button>
+              <button type="button" onClick={() => onPanelClick(panels[2])} className={itemClass(false)}><Network size={18} /> Relationship Intelligence</button>
+              <button type="button" onClick={() => onViewChange("investor-discovery")} className={itemClass(activeView === "investor-discovery")}><Building2 size={18} /> Investor Discovery</button>
             </div>
           )}
 
@@ -1656,7 +1761,7 @@ function Sidebar({ userName, onLogout, onProfileClick, activeView, onViewChange,
           {openSections.tools && (
             <div className="space-y-1">
               <button type="button" onClick={() => onPanelClick(panels[1])} className={itemClass(false)}><FileText size={18} /> Pitch Deck Analysis</button>
-              <button type="button" onClick={() => onViewChange("my-investors")} className={itemClass(false)}><TableProperties size={18} /> Investors Shortlist</button>
+              <button type="button" onClick={() => onPanelClick({ id: "outreach", title: "Outreach Message Generator", subtitle: "Personalized investor outreach workspace." })} className={itemClass(false)}><Send size={18} /> Outreach Message Generator</button>
               <button type="button" onClick={() => onPanelClick({ id: "ai-insight", title: "AI Insight", subtitle: "Fundraising intelligence workspace." })} className={itemClass(false)}><Lightbulb size={18} /> AI Insight</button>
             </div>
           )}
@@ -1682,6 +1787,7 @@ function Sidebar({ userName, onLogout, onProfileClick, activeView, onViewChange,
             <button type="button" onClick={() => onViewChange("home")} className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10">Home</button>
             <button type="button" onClick={() => onViewChange("my-investors")} className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10">Investors</button>
             <button type="button" onClick={() => onViewChange("matching")} className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10">Matching</button>
+            <button type="button" onClick={() => onViewChange("investor-discovery")} className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10">Discovery</button>
           </div>
         </div>
       </div>
@@ -1693,7 +1799,15 @@ const investorValue = (investor, keys) => keys.map((key) => investor?.[key]).fin
 const investorList = (investor, keys) => {
   const value = investorValue(investor, keys);
   if (Array.isArray(value)) return value.filter(Boolean);
-  return String(value || "").split(/[,;|]/).map((item) => item.trim()).filter(Boolean);
+  const rawValue = String(value || "").trim();
+  if (!rawValue) return [];
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean).map((item) => String(item).trim()).filter(Boolean);
+  } catch {
+    // Backend may return comma-separated text for older investor rows.
+  }
+  return rawValue.split(/[,;|]/).map((item) => item.trim().replace(/^["'\[]+|["'\]]+$/g, "")).filter(Boolean);
 };
 const displayList = (items) => items.filter(Boolean).join(", ");
 const scoreLevel = (score) => {
@@ -1738,6 +1852,271 @@ const getGeneralInvestorCategory = (investor) => {
 };
 
 const toggleArrayValue = (values, value) => values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+
+const getInvestorDisplayName = (investor) => investor?.entity_name || investor?.name || "Investor";
+const getInvestorLocation = (investor) => displayList([
+  investor?.location_city,
+  investorValue(investor, ["region", "location_region", "hq_region"]),
+  investor?.hq_country,
+]);
+const getInvestorStages = (investor) => displayList(investorList(investor, ["top_3_stages", "focus_stages", "stages"]).slice(0, 3));
+const getInvestorIndustries = (investor) => displayList(investorList(investor, ["top_3_industries", "focus_industries", "industries"]).slice(0, 3));
+const getInvestorChequeSize = (investor) => investorValue(investor, ["cheque_size", "check_size", "ticket_size", "investment_size"]);
+
+function InvestorDiscoveryPage({ investors, loading, error, onStartOutreach }) {
+  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState({
+    location: "",
+    stage: "",
+    industry: "",
+    chequeSize: "",
+    investorType: "",
+  });
+  const [selectedInvestor, setSelectedInvestor] = useState(null);
+
+  const options = useMemo(() => ({
+    locations: uniqueSorted(investors.flatMap((investor) => [investor.location_city, investor.hq_country, investorValue(investor, ["region", "location_region", "hq_region"])])),
+    stages: uniqueSorted(investors.flatMap((investor) => investorList(investor, ["top_3_stages", "focus_stages", "stages"]))),
+    industries: uniqueSorted(investors.flatMap((investor) => investorList(investor, ["top_3_industries", "focus_industries", "industries"]))),
+    chequeSizes: uniqueSorted(investors.map(getInvestorChequeSize)),
+    investorTypes: uniqueSorted(investors.map((investor) => investor.investor_type || investor.category)),
+  }), [investors]);
+
+  const filteredInvestors = useMemo(() => investors.filter((investor) => {
+    const name = getInvestorDisplayName(investor).toLowerCase();
+    if (query && !name.includes(query.toLowerCase())) return false;
+    if (filters.location) {
+      const locationText = [investor.location_city, investor.hq_country, investorValue(investor, ["region", "location_region", "hq_region"])].filter(Boolean).join(" ");
+      if (!locationText.includes(filters.location)) return false;
+    }
+    if (filters.stage && !investorList(investor, ["top_3_stages", "focus_stages", "stages"]).includes(filters.stage)) return false;
+    if (filters.industry && !investorList(investor, ["top_3_industries", "focus_industries", "industries"]).includes(filters.industry)) return false;
+    if (filters.chequeSize && getInvestorChequeSize(investor) !== filters.chequeSize) return false;
+    if (filters.investorType && (investor.investor_type || investor.category) !== filters.investorType) return false;
+    return true;
+  }), [investors, query, filters]);
+
+  const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
+  const clearFilters = () => {
+    setQuery("");
+    setFilters({ location: "", stage: "", industry: "", chequeSize: "", investorType: "" });
+  };
+
+  return (
+    <main className="min-h-screen bg-slate-50 px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <header className="mb-6 border-b border-slate-200 pb-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Investor database</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Investor Discovery</h1>
+          <p className="mt-2 max-w-2xl text-base text-slate-500">
+            Discover verified investor profiles, apply filters, and shortlist your top targets.
+          </p>
+          <p className="mt-4 inline-flex rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 ring-1 ring-blue-100">
+            {loading ? "Loading investors..." : `${filteredInvestors.length} of ${investors.length} investors loaded`}
+          </p>
+        </header>
+
+        <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.2fr)_repeat(5,minmax(140px,1fr))_auto]">
+            <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm text-slate-500">
+              <Search size={17} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search investor name..." className="w-full bg-transparent outline-none" />
+            </label>
+            <DiscoverySelect label="Location" value={filters.location} values={options.locations} onChange={(value) => updateFilter("location", value)} />
+            <DiscoverySelect label="Stage" value={filters.stage} values={options.stages} onChange={(value) => updateFilter("stage", value)} />
+            <DiscoverySelect label="Industry" value={filters.industry} values={options.industries} onChange={(value) => updateFilter("industry", value)} />
+            <DiscoverySelect label="Cheque size" value={filters.chequeSize} values={options.chequeSizes} onChange={(value) => updateFilter("chequeSize", value)} />
+            <DiscoverySelect label="Investor type" value={filters.investorType} values={options.investorTypes} onChange={(value) => updateFilter("investorType", value)} />
+            <button type="button" onClick={clearFilters} className="min-h-11 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Clear
+            </button>
+          </div>
+        </section>
+
+        {loading ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map((item) => (
+              <div key={item} className="relative min-h-64 overflow-hidden rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="loading-sweep absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-slate-50 to-transparent" />
+                <div className="h-5 w-2/3 rounded-full bg-slate-200" />
+                <div className="mt-4 h-3 w-1/2 rounded-full bg-slate-100" />
+                <div className="mt-8 h-20 rounded-lg bg-slate-100" />
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <StatePanel icon={<X size={20} />} title="Investor database could not be loaded." detail={error} />
+        ) : filteredInvestors.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredInvestors.map((investor) => (
+              <InvestorDiscoveryCard
+                key={getInvestorKey(investor)}
+                investor={investor}
+                onConnect={() => setSelectedInvestor(investor)}
+                onStartOutreach={() => onStartOutreach(investor)}
+              />
+            ))}
+          </div>
+        ) : (
+          <StatePanel icon={<Search size={20} />} title="No investors match these filters." detail="Try clearing one or more filters to broaden discovery." />
+        )}
+      </div>
+
+      {selectedInvestor && (
+        <InvestorContactModal
+          investor={selectedInvestor}
+          onClose={() => setSelectedInvestor(null)}
+          onStartOutreach={() => {
+            onStartOutreach(selectedInvestor);
+            setSelectedInvestor(null);
+          }}
+        />
+      )}
+    </main>
+  );
+}
+
+function DiscoverySelect({ label, value, values, onChange }) {
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+      aria-label={label}
+    >
+      <option value="">{label}</option>
+      {values.map((item) => <option key={item} value={item}>{item}</option>)}
+    </select>
+  );
+}
+
+function InvestorDiscoveryCard({ investor, onConnect, onStartOutreach }) {
+  const name = getInvestorDisplayName(investor);
+  const location = getInvestorLocation(investor);
+  const stages = getInvestorStages(investor);
+  const industries = getInvestorIndustries(investor);
+  const chequeSize = getInvestorChequeSize(investor);
+  const description = investor.description || "No investor description is available.";
+
+  return (
+    <article className="flex min-h-full flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-sm font-black text-blue-700 ring-1 ring-blue-100">
+          {getInvestorInitials(name)}
+        </div>
+        <div className="min-w-0">
+          <h2 className="truncate text-lg font-semibold text-slate-950">{name}</h2>
+          <p className="mt-1 text-sm text-slate-500">{investor.investor_type || investor.category || "Investor"}</p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 text-sm">
+        <InvestorCardField label="Location" value={location} />
+        <InvestorCardField label="Investment stage" value={stages} />
+        <InvestorCardField label="Industry focus" value={industries} />
+        <InvestorCardField label="Cheque size" value={chequeSize} />
+      </div>
+
+      <p className="mt-5 line-clamp-4 text-sm leading-6 text-slate-600">{description}</p>
+
+      <div className="mt-auto flex gap-2 pt-5">
+        <button type="button" onClick={onConnect} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+          <Mail size={16} />
+          Connect
+        </button>
+        <button type="button" onClick={onStartOutreach} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+          <Send size={16} />
+          Outreach
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function InvestorCardField({ label, value }) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+      <span className="text-xs font-semibold uppercase text-slate-500">{label}</span>
+      <span className="max-w-[62%] text-right text-sm font-semibold text-slate-800">{value || "Unavailable"}</span>
+    </div>
+  );
+}
+
+function InvestorContactModal({ investor, onClose, onStartOutreach }) {
+  const name = getInvestorDisplayName(investor);
+  const firm = investorValue(investor, ["firm", "entity_name"]) || name;
+  const email = investorValue(investor, ["contact_1_email", "contact_2_email", "email"]);
+  const linkedin = investorValue(investor, ["contact_1_linkedin", "contact_2_linkedin", "company_linkedin", "linkedin"]);
+  const website = investorValue(investor, ["website", "website_url"]);
+  const notes = investorValue(investor, ["notes", "intro_notes", "description"]);
+  const hasContactInfo = Boolean(email || linkedin || website);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl rounded-lg bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
+          <div>
+            <p className="text-xs font-semibold uppercase text-blue-700">Investor contact</p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-950">{name}</h2>
+            <p className="mt-1 text-sm text-slate-500">{firm}</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200">
+            <X size={19} />
+          </button>
+        </div>
+        <div className="space-y-3 p-5">
+          {!hasContactInfo ? (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
+              Contact information is not available for this investor.
+            </p>
+          ) : null}
+          <ContactRow label="Email" value={email} href={email ? `mailto:${email}` : ""} />
+          <ContactRow label="LinkedIn URL" value={linkedin} href={linkedin} />
+          <ContactRow label="Website" value={website} href={website} />
+          <ContactRow label="Short intro / notes" value={notes} multiline />
+        </div>
+        <div className="flex gap-2 border-t border-slate-200 p-5">
+          <button type="button" onClick={onStartOutreach} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+            <Send size={16} />
+            Generate outreach
+          </button>
+          <button type="button" onClick={onClose} className="min-h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContactRow({ label, value, href, multiline = false }) {
+  if (!hasValue(value)) return null;
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+      {href ? (
+        <a href={href} target={href.startsWith("mailto:") ? undefined : "_blank"} rel="noreferrer" className="mt-2 inline-flex items-center gap-2 break-all text-sm font-semibold text-blue-700 hover:underline">
+          {value}
+          <ExternalLink size={14} />
+        </a>
+      ) : (
+        <p className={`mt-2 text-sm text-slate-700 ${multiline ? "leading-6" : "font-semibold"}`}>{value}</p>
+      )}
+    </div>
+  );
+}
+
+function StatePanel({ icon, title, detail }) {
+  return (
+    <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center">
+      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+        {icon}
+      </div>
+      <p className="mt-3 font-semibold text-slate-950">{title}</p>
+      <p className="mt-1 text-sm text-slate-500">{detail}</p>
+    </div>
+  );
+}
 
 function MatchPill({ score }) {
   if (!hasValue(score)) return <LockedValue />;
@@ -2127,7 +2506,7 @@ function InvestorCard({ investor, rank, onViewDetails }) {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {["Fintech", "Canada", "Pre-seed / Seed"].map((tag) => (
+        {(investor.tags?.length ? investor.tags : ["Profile loaded"]).map((tag) => (
           <span key={tag} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
             {tag}
           </span>
@@ -2165,6 +2544,86 @@ function InvestorCard({ investor, rank, onViewDetails }) {
         View Details
       </button>
     </article>
+  );
+}
+
+function PitchCoachPanel({ pitchDeckUploaded, deckError, onPitchDeckChange }) {
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const features = [
+    "Get a Full Expert-Level Analysis",
+    "Slide-by-Slide Breakdown",
+    "Ask Anything with AI Chat",
+  ];
+
+  return (
+    <div className="flex-1 overflow-auto bg-slate-50">
+      {!uploadOpen ? (
+        <main className="flex min-h-full items-center justify-center px-4 py-12">
+          <section className="w-full max-w-4xl text-center">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+              <Sparkles size={30} />
+            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">AI Pitch Coach</p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">AI Pitch Coach</h1>
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600">
+              Your personal AI coach for analyzing, refining, and elevating your pitch deck.
+            </p>
+
+            <div className="mx-auto mt-10 max-w-2xl rounded-xl border border-slate-200 bg-white p-6 text-left shadow-sm">
+              <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Meet Your AI Pitch Coach</h2>
+              <div className="mt-6 space-y-3">
+                {features.map((feature) => (
+                  <div key={feature} className="flex items-center gap-3 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3">
+                    <CheckCircle2 className="shrink-0 text-blue-600" size={18} />
+                    <span className="font-semibold text-slate-900">{feature}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <button type="button" onClick={() => setUploadOpen(true)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700">
+                  <Upload size={17} />
+                  Analyze Your Deck
+                </button>
+                <button type="button" onClick={() => setUploadOpen(true)} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                  See sample
+                </button>
+              </div>
+            </div>
+          </section>
+        </main>
+      ) : (
+        <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+          <button type="button" onClick={() => setUploadOpen(false)} className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-800">
+            <ChevronRight className="rotate-180" size={16} />
+            Back to coach
+          </button>
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Pitch Deck Analysis</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Upload your pitch deck</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Upload a PDF deck to validate the file and attach it to the current founder profile.
+            </p>
+            <label className="mt-6 flex min-h-56 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-blue-50/50 px-6 text-center hover:bg-blue-50">
+              <Upload className="text-blue-700" size={34} />
+              <span className="mt-3 text-base font-semibold text-slate-950">Choose PDF pitch deck</span>
+              <span className="mt-1 text-sm text-slate-500">Maximum file size: 10MB</span>
+              <input type="file" accept="application/pdf,.pdf" onChange={onPitchDeckChange} className="hidden" />
+            </label>
+            {pitchDeckUploaded && (
+              <p className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                Pitch deck uploaded and ready for matching context.
+              </p>
+            )}
+            {deckError && (
+              <p className="mt-4 rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+                {deckError}
+              </p>
+            )}
+            {/* TODO: Connect this flow to a production pitch deck analysis endpoint for full expert-level analysis, slide breakdown, and AI chat. */}
+          </section>
+        </main>
+      )}
+    </div>
   );
 }
 
@@ -2308,6 +2767,7 @@ function DashboardDrawer({
   setGeneratedEmail,
   emailTone,
   setEmailTone,
+  onInvestorSelect,
   emailNotice,
   onGenerateWarmIntroEmail,
   onCopyEmail,
@@ -2320,6 +2780,7 @@ function DashboardDrawer({
   onConnectionDataChange,
   onPitchDeckChange,
   onOpenOutreach,
+  allInvestors,
   chatMessages,
   chatInput,
   setChatInput,
@@ -2327,7 +2788,7 @@ function DashboardDrawer({
   handleClientFile,
   onClose,
 }) {
-  const fullScreenPanelIds = new Set(["relationship", "outreach", "investor-discovery-district"]);
+  const fullScreenPanelIds = new Set(["relationship", "outreach", "pitch"]);
   const isFullScreenPanel = fullScreenPanelIds.has(activePanel.id);
 
   return (
@@ -2347,6 +2808,12 @@ function DashboardDrawer({
           <ProfileTable formData={formData} />
         ) : activePanel.id === "matching" ? (
           <MatchesPanel matches={matches} matchingLoading={matchingLoading} matchingSource={matchingSource} />
+        ) : activePanel.id === "pitch" ? (
+          <PitchCoachPanel
+            pitchDeckUploaded={pitchDeckUploaded}
+            deckError={deckError}
+            onPitchDeckChange={onPitchDeckChange}
+          />
         ) : activePanel.id === "investor" ? (
           <InvestorDetailPanel investor={activePanel.investor} generatedEmail={generatedEmail} />
         ) : activePanel.id === "relationship" ? (
@@ -2371,10 +2838,14 @@ function DashboardDrawer({
             formData={formData}
             selectedWarmIntro={selectedWarmIntro}
             selectedInvestor={selectedInvestor}
+            matches={matches}
+            allInvestors={allInvestors}
+            relationshipInsights={relationshipInsights}
             generatedEmail={generatedEmail}
             setGeneratedEmail={setGeneratedEmail}
             emailTone={emailTone}
             setEmailTone={setEmailTone}
+            onInvestorSelect={onInvestorSelect}
             emailNotice={emailNotice}
             onGenerateWarmIntroEmail={onGenerateWarmIntroEmail}
             onCopyEmail={onCopyEmail}
@@ -2693,11 +3164,8 @@ function RelationshipIntelligencePanel({
   relationshipLoading,
   relationshipError,
   onConnectionDataChange,
-  onPitchDeckChange,
   onOpenOutreach,
-  pitchDeckUploaded,
 }) {
-  const locked = !pitchDeckUploaded;
   const hasRelationshipData = relationshipInsights.length > 0;
   const safeIndex = Math.min(selectedRelationshipIndex, Math.max(relationshipInsights.length - 1, 0));
   const selectedInsight = relationshipInsights[safeIndex];
@@ -2719,13 +3187,13 @@ function RelationshipIntelligencePanel({
           <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
             <Upload size={16} />
             Upload Connection Data
-            <input type="file" accept=".csv,text/csv" onChange={onConnectionDataChange} className="hidden" />
+            <input type="file" accept=".csv,.xls,.xlsx,text/csv" onChange={onConnectionDataChange} className="hidden" />
           </label>
         </div>
         {relationshipError && <p className="mt-3 text-sm font-semibold text-rose-600">{relationshipError}</p>}
 
         <div className="relative mt-5">
-          <div className={locked || relationshipLoading ? "pointer-events-none select-none blur-[3px]" : ""}>
+          <div className={relationshipLoading ? "pointer-events-none select-none blur-[3px]" : ""}>
             {hasRelationshipData ? (
               <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
                 <RelationshipInvestorList
@@ -2746,28 +3214,20 @@ function RelationshipIntelligencePanel({
                 />
               </div>
             ) : (
-              <EmptyRelationshipState title="No relationship intelligence results found." />
+              <EmptyRelationshipState
+                title={connectionDataFile ? "No warm intro path found from the uploaded connection data." : "Upload connection data to find warm intro paths."}
+                detail={connectionDataFile ? "Only real matched paths from the backend relationship intelligence logic are shown here." : "Upload a CSV exported from LinkedIn or manually prepared connection data."}
+              />
             )}
           </div>
 
-          {(locked || relationshipLoading) && (
+          {relationshipLoading && (
             <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/75 px-4 backdrop-blur-[1px]">
               <div className="max-w-sm rounded-lg border border-blue-100 bg-white p-5 text-center shadow-sm">
                 <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                  {relationshipLoading ? <Loader2 className="animate-spin" size={20} /> : <Network size={20} />}
+                  <Loader2 className="animate-spin" size={20} />
                 </div>
-                <p className="mt-3 text-sm font-semibold text-slate-950">
-                  {relationshipLoading
-                    ? "Generating relationship intelligence from your connection data."
-                    : "Upload your pitch deck to unlock relationship intelligence insights."}
-                </p>
-                {!relationshipLoading && !pitchDeckUploaded && (
-                  <label className="mt-4 inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
-                    <Upload size={16} />
-                    Upload Pitch Deck
-                    <input type="file" accept="application/pdf,.pdf" onChange={onPitchDeckChange} className="hidden" />
-                  </label>
-                )}
+                <p className="mt-3 text-sm font-semibold text-slate-950">Generating relationship intelligence from your connection data.</p>
               </div>
             </div>
           )}
@@ -3092,7 +3552,7 @@ function RelationshipSummaryPanel({ insights, selectedIndex, selectedInsight, se
   );
 }
 
-function EmptyRelationshipState({ compact = false, title = "No relationship path found yet.", investorName = "" }) {
+function EmptyRelationshipState({ compact = false, title = "No relationship path found yet.", investorName = "", detail = "Try uploading LinkedIn connection data or adding founder network information." }) {
   return (
     <div className={`rounded-lg border border-dashed border-slate-300 bg-white p-5 text-center ${compact ? "" : "min-h-[280px] flex flex-col items-center justify-center"}`}>
       <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
@@ -3101,7 +3561,7 @@ function EmptyRelationshipState({ compact = false, title = "No relationship path
       <p className="mt-3 text-sm font-semibold text-slate-950">{title}</p>
       {investorName && <p className="mt-1 text-sm font-semibold text-blue-700">Investor match: {investorName}</p>}
       <p className="mt-1 text-sm leading-6 text-slate-500">
-        Try uploading LinkedIn connection data or adding founder network information.
+        {detail}
       </p>
     </div>
   );
@@ -3111,10 +3571,14 @@ function OutreachPanel({
   formData,
   selectedWarmIntro,
   selectedInvestor,
+  matches = [],
+  allInvestors = [],
+  relationshipInsights = [],
   generatedEmail,
   setGeneratedEmail,
   emailTone,
   setEmailTone,
+  onInvestorSelect,
   emailNotice,
   onGenerateWarmIntroEmail,
   onCopyEmail,
@@ -3124,14 +3588,44 @@ function OutreachPanel({
   const hasIntroducer = Boolean(selectedWarmIntro?.introducerName);
   const pathSummary = getWarmIntroPathSummary(selectedWarmIntro);
   const hasWarmPath = Boolean(selectedWarmIntro?.nodes?.length || selectedWarmIntro?.pathNodes?.length);
+  const investorOptions = useMemo(() => {
+    const grouped = new Map();
+    [...matches, ...allInvestors].forEach((investor) => {
+      const name = getInvestorDisplayName(investor);
+      if (!grouped.has(name)) grouped.set(name, normalizeInvestorRecord(investor));
+    });
+    return Array.from(grouped.values()).sort((a, b) => getInvestorDisplayName(a).localeCompare(getInvestorDisplayName(b)));
+  }, [matches, allInvestors]);
+  const selectedMatch = matches.find((match) => match.entity_name === selectedInvestor);
+  const selectedRelationship = relationshipInsights.find((insight) => insight.investorName === selectedInvestor);
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50 p-5">
       <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="space-y-4">
           <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase text-blue-700">Warm Intro Helper</p>
+            <p className="text-xs font-semibold uppercase text-blue-700">Outreach Message Generator</p>
             <h3 className="mt-1 text-lg font-semibold text-slate-950">{selectedWarmIntro?.investorName || selectedInvestor || "Investor outreach"}</h3>
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-semibold text-slate-700">Selected investor</span>
+              <select
+                value={selectedInvestor || ""}
+                onChange={(event) => onInvestorSelect(event.target.value)}
+                className="min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="">Select investor</option>
+                {investorOptions.map((investor) => (
+                  <option key={getInvestorKey(investor)} value={getInvestorDisplayName(investor)}>
+                    {getInvestorDisplayName(investor)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {hasValue(selectedMatch?.final_score) && (
+              <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
+                Matching score: {Math.round(selectedMatch.final_score)}%
+              </p>
+            )}
             {hasWarmPath ? (
               <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
                 <p className="text-xs font-semibold uppercase text-blue-700">Warm Introduction Path</p>
@@ -3144,15 +3638,22 @@ function OutreachPanel({
                 )}
                 {selectedWarmIntro.confidence && <p className="mt-1 text-sm text-slate-700">Confidence: {selectedWarmIntro.confidence}</p>}
               </div>
+            ) : selectedInvestor ? (
+              <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                No warm intro path is available for this investor. The generator will create direct cold outreach.
+              </p>
             ) : null}
+            {selectedRelationship?.warmPaths?.length > 0 && !hasWarmPath && (
+              <p className="mt-3 text-xs text-slate-500">Warm path data exists for this investor. Select it from Relationship Intelligence to use the mutual connection.</p>
+            )}
             <div className="mt-4 grid gap-2">
               <button type="button" onClick={onGenerateWarmIntroEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
                 <Sparkles size={16} />
-                Generate Warm Intro Message
+                Generate
               </button>
               <button type="button" onClick={onCopyEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
                 <Copy size={16} />
-                Copy Message
+                Copy
               </button>
               <button type="button" onClick={onSendEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-100 bg-white px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-50">
                 <Mail size={16} />
@@ -3190,11 +3691,11 @@ function OutreachPanel({
             <div>
               <p className="text-xs font-semibold uppercase text-blue-700">Outreach Email</p>
               <h3 className="mt-1 text-lg font-semibold text-slate-950">
-                {hasIntroducer ? "Warm intro request" : "Direct investor outreach"}
+                Generated message
               </h3>
             </div>
             <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-              {["Professional", "Friendly", "Concise"].map((tone) => (
+              {["professional", "concise", "warm"].map((tone) => (
                 <button
                   key={tone}
                   type="button"
@@ -3203,7 +3704,7 @@ function OutreachPanel({
                     emailTone === tone ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-white"
                   }`}
                 >
-                  {tone}
+                  {tone.charAt(0).toUpperCase() + tone.slice(1)}
                 </button>
               ))}
             </div>
@@ -3217,7 +3718,7 @@ function OutreachPanel({
             <InputLike label="Subject" value={generatedEmail.subject} onChange={(value) => setGeneratedEmail((prev) => ({ ...prev, subject: value }))} />
           </div>
           <div className="mt-4">
-            <label className="mb-2 block text-sm font-semibold text-slate-700">Email body</label>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">Generated message output</label>
             <textarea
               value={generatedEmail.body}
               onChange={(e) => setGeneratedEmail((prev) => ({ ...prev, body: e.target.value }))}
@@ -3229,7 +3730,7 @@ function OutreachPanel({
           <div className="mt-5 flex flex-wrap gap-3">
             <button type="button" onClick={onGenerateWarmIntroEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">
               <Sparkles size={16} />
-              Generate Warm Intro Message
+              Generate
             </button>
             <button type="button" onClick={onCopyEmail} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">
               <Copy size={16} />
