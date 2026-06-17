@@ -52,6 +52,7 @@ const DEFAULT_FORM_DATA = {
   education: "",
   startupName: "",
   websiteUrl: "",
+  oneSentenceDescription: "",
   stage: "",
   industry: [],
   businessModel: [],
@@ -522,6 +523,10 @@ export default function FounderIntakeForm() {
       text: "Upload a founder and startup profile or paste notes here. I will keep the context attached to this dashboard section.",
     },
   ]);
+  const [aiInsightsDeckFile, setAiInsightsDeckFile] = useState(null);
+  const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
+  const [aiInsightsError, setAiInsightsError] = useState("");
+  const [aiInsightsResult, setAiInsightsResult] = useState(null);
   const enrichmentRequestedRef = useRef(new Set());
 
   const stages = ["Pre-seed", "Seed", "Series A", "Growth (Series B/C)", "Scale (Series D+)"];
@@ -691,6 +696,7 @@ export default function FounderIntakeForm() {
               stage: formData.stage,
               industry: formData.industry.join(", "),
               fundraising_preference: formData.fundraisingPreference,
+              one_sentence_description: formData.oneSentenceDescription,
               pitch_deck_url: formData.pitchDeck ? formData.pitchDeck.name : "",
             },
           }),
@@ -915,10 +921,10 @@ export default function FounderIntakeForm() {
       icon: <BarChart3 size={20} />,
     },
     {
-      id: "pitch",
-      title: "AI Pitch Coach",
-      subtitle: "Analyze and refine your pitch deck.",
-      icon: <FileText size={20} />,
+      id: "ai-insight",
+      title: "AI Insights",
+      subtitle: "Analyze founder, startup, and pitch deck readiness.",
+      icon: <Lightbulb size={20} />,
     },
     {
       id: "relationship",
@@ -1184,6 +1190,68 @@ export default function FounderIntakeForm() {
     }
     window.open(linkedinUrl, "_blank", "noopener,noreferrer");
     setEmailNotice(copied ? "Message copied. LinkedIn profile opened." : "LinkedIn profile opened. Copy failed; select the draft text and copy it manually.");
+  };
+
+  const handleAiInsightsDeckChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fileName = file.name.toLowerCase();
+    const isSupported =
+      file.type === "application/pdf" ||
+      file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+      fileName.endsWith(".pdf") ||
+      fileName.endsWith(".pptx");
+    if (!isSupported) {
+      setAiInsightsError("Pitch deck must be a PDF or PPTX file.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_PITCH_DECK_BYTES) {
+      setAiInsightsError("Pitch deck exceeds the maximum file size of 10MB.");
+      e.target.value = "";
+      return;
+    }
+    setAiInsightsDeckFile(file);
+    setAiInsightsError("");
+  };
+
+  const handleAnalyzeAiInsights = async () => {
+    setAiInsightsLoading(true);
+    setAiInsightsError("");
+    try {
+      const founderPayload = {
+        name: formData.name,
+        current_role: formData.currentRole,
+        education: formData.education,
+        location: formData.location,
+        linkedin_url: formData.linkedinUrl,
+        email: formData.email,
+      };
+      const startupPayload = {
+        startup_name: formData.startupName,
+        industry: formData.industry.join(", "),
+        stage: formData.stage,
+        fundraising_preference: formData.fundraisingPreference,
+        one_sentence_description: formData.oneSentenceDescription || "",
+        website_url: formData.websiteUrl,
+        business_model: formData.businessModel.join(", "),
+      };
+      const payload = new FormData();
+      payload.append("founder_data", JSON.stringify(founderPayload));
+      payload.append("startup_data", JSON.stringify(startupPayload));
+      payload.append("website_content", "");
+      if (aiInsightsDeckFile) payload.append("pitch_deck", aiInsightsDeckFile);
+
+      const data = await apiFetch("/ai-insights/analyze", {
+        method: "POST",
+        body: payload,
+      });
+      setAiInsightsResult(data);
+    } catch (error) {
+      setAiInsightsError(error.message || "Unable to generate AI insights.");
+    } finally {
+      setAiInsightsLoading(false);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -1459,6 +1527,7 @@ export default function FounderIntakeForm() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <Input label="Startup Name" name="startupName" value={formData.startupName} onChange={handleChange} required />
                   <Input label="Website URL" name="websiteUrl" value={formData.websiteUrl} onChange={handleChange} placeholder="https://yourstartup.com" />
+                  <Input label="Startup Description" name="oneSentenceDescription" value={formData.oneSentenceDescription} onChange={handleChange} placeholder="One sentence about what your startup does" />
 
                   <Select label="Stage" name="stage" value={formData.stage} onChange={handleChange} options={stages} required />
                   <MultiSelect
@@ -1701,6 +1770,12 @@ export default function FounderIntakeForm() {
               onCopyEmail={handleCopyEmail}
               onSendEmail={handleSendEmail}
               onSendLinkedIn={handleSendLinkedIn}
+              aiInsightsDeckFile={aiInsightsDeckFile}
+              aiInsightsLoading={aiInsightsLoading}
+              aiInsightsError={aiInsightsError}
+              aiInsightsResult={aiInsightsResult}
+              onAiInsightsDeckChange={handleAiInsightsDeckChange}
+              onAnalyzeAiInsights={handleAnalyzeAiInsights}
               connectionDataFile={connectionDataFile}
               pitchDeckUploaded={Boolean(formData.pitchDeck)}
               relationshipLoading={relationshipLoading}
@@ -1709,6 +1784,10 @@ export default function FounderIntakeForm() {
               onPitchDeckChange={handlePitchDeckChange}
               onOpenOutreach={() => setActivePanel({ id: "outreach", title: "Outreach", subtitle: "Investor outreach workspace." })}
               allInvestors={discoveryInvestors}
+              onFindInvestors={() => {
+                setActivePanel(null);
+                setDashboardView("investor-discovery");
+              }}
               chatMessages={chatMessages}
               chatInput={chatInput}
               setChatInput={setChatInput}
@@ -1760,9 +1839,8 @@ function Sidebar({ userName, onLogout, onProfileClick, activeView, onViewChange,
           </button>
           {openSections.tools && (
             <div className="space-y-1">
-              <button type="button" onClick={() => onPanelClick(panels[1])} className={itemClass(false)}><FileText size={18} /> Pitch Deck Analysis</button>
+              <button type="button" onClick={() => onPanelClick({ id: "ai-insight", title: "AI Insights", subtitle: "Startup evaluation dashboard." })} className={itemClass(false)}><Lightbulb size={18} /> AI Insights</button>
               <button type="button" onClick={() => onPanelClick({ id: "outreach", title: "Outreach Message Generator", subtitle: "Personalized investor outreach workspace." })} className={itemClass(false)}><Send size={18} /> Outreach Message Generator</button>
-              <button type="button" onClick={() => onPanelClick({ id: "ai-insight", title: "AI Insight", subtitle: "Fundraising intelligence workspace." })} className={itemClass(false)}><Lightbulb size={18} /> AI Insight</button>
             </div>
           )}
         </nav>
@@ -2547,81 +2625,344 @@ function InvestorCard({ investor, rank, onViewDetails }) {
   );
 }
 
-function PitchCoachPanel({ pitchDeckUploaded, deckError, onPitchDeckChange }) {
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const features = [
-    "Get a Full Expert-Level Analysis",
-    "Slide-by-Slide Breakdown",
-    "Ask Anything with AI Chat",
+const scoreLabel = (score) => {
+  const value = Number(score || 0);
+  if (value >= 90) return "Investor Ready";
+  if (value >= 80) return "Strong Candidate";
+  if (value >= 70) return "Promising";
+  if (value >= 60) return "Early Stage";
+  return "Significant Gaps";
+};
+
+function AIInsightsPanel({ formData, deckFile, loading, error, result, onDeckChange, onAnalyze, onFindInvestors }) {
+  const founderAnalysis = result?.founder_analysis;
+  const startupAnalysis = result?.startup_analysis;
+  const pitchDeckAnalysis = result?.pitch_deck_analysis;
+
+  return (
+    <main className="flex-1 overflow-auto bg-slate-50">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <header className="mb-6 border-b border-slate-200 pb-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Fundraising intelligence</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">AI Insights</h1>
+          <p className="mt-2 max-w-3xl text-base leading-7 text-slate-600">
+            AI-powered analysis of your founder profile, startup, and pitch deck to improve fundraising readiness.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={onAnalyze}
+              disabled={loading}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {loading ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}
+              {loading ? "Analyzing..." : "Analyze Founder, Startup & Deck"}
+            </button>
+            <button type="button" onClick={onFindInvestors} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-5 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+              <Target size={17} />
+              Find Matching Investors
+            </button>
+          </div>
+          {error && <p className="mt-4 rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
+        </header>
+
+        <div className="grid gap-6">
+          <FounderAnalysisSection formData={formData} analysis={founderAnalysis} loading={loading} />
+          <StartupAnalysisSection formData={formData} analysis={startupAnalysis} loading={loading} />
+          <PitchDeckAnalysisSection
+            deckFile={deckFile}
+            analysis={pitchDeckAnalysis}
+            loading={loading}
+            onDeckChange={onDeckChange}
+            onAnalyze={onAnalyze}
+          />
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button type="button" onClick={onFindInvestors} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#07182f] px-5 text-sm font-semibold text-white hover:bg-blue-700">
+            <Target size={17} />
+            Find Matching Investors
+          </button>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function FounderAnalysisSection({ formData, analysis, loading }) {
+  const profileRows = [
+    ["Founder Name", formData.name],
+    ["Current Role", formData.currentRole],
+    ["Education", formData.education],
+    ["Location", formData.location],
+    ["LinkedIn Profile", formData.linkedinUrl],
+  ];
+  const scores = [
+    ["Founder Strength Score", analysis?.overall_score],
+    ["Founder-Market Fit Score", analysis?.founder_market_fit],
+    ["Leadership Readiness Score", analysis?.leadership_score],
+    ["Investor Confidence Score", analysis?.investor_confidence_score],
   ];
 
   return (
-    <div className="flex-1 overflow-auto bg-slate-50">
-      {!uploadOpen ? (
-        <main className="flex min-h-full items-center justify-center px-4 py-12">
-          <section className="w-full max-w-4xl text-center">
-            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
-              <Sparkles size={30} />
-            </div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">AI Pitch Coach</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">AI Pitch Coach</h1>
-            <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600">
-              Your personal AI coach for analyzing, refining, and elevating your pitch deck.
-            </p>
+    <AnalysisSection title="Founder Analysis" icon={<User size={20} />} loading={loading && !analysis}>
+      <ProfileGrid rows={profileRows} />
+      <ScoreGrid scores={scores} />
+      <InsightColumns
+        columns={[
+          ["Strengths", analysis?.strengths],
+          ["Weaknesses", analysis?.weaknesses],
+          ["Recommendations", analysis?.recommendations],
+        ]}
+      />
+    </AnalysisSection>
+  );
+}
 
-            <div className="mx-auto mt-10 max-w-2xl rounded-xl border border-slate-200 bg-white p-6 text-left shadow-sm">
-              <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Meet Your AI Pitch Coach</h2>
-              <div className="mt-6 space-y-3">
-                {features.map((feature) => (
-                  <div key={feature} className="flex items-center gap-3 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3">
-                    <CheckCircle2 className="shrink-0 text-blue-600" size={18} />
-                    <span className="font-semibold text-slate-900">{feature}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <button type="button" onClick={() => setUploadOpen(true)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700">
-                  <Upload size={17} />
-                  Analyze Your Deck
-                </button>
-                <button type="button" onClick={() => setUploadOpen(true)} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                  See sample
-                </button>
-              </div>
-            </div>
-          </section>
-        </main>
-      ) : (
-        <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-          <button type="button" onClick={() => setUploadOpen(false)} className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-800">
-            <ChevronRight className="rotate-180" size={16} />
-            Back to coach
+function StartupAnalysisSection({ formData, analysis, loading }) {
+  const profileRows = [
+    ["Startup Name", formData.startupName],
+    ["Industry", formData.industry.join(", ")],
+    ["Stage", formData.stage],
+    ["Fundraising Preferences", formData.fundraisingPreference],
+    ["Startup Description", formData.oneSentenceDescription || formData.fundraisingPreference],
+    ["Website", formData.websiteUrl],
+  ];
+  const scores = [
+    ["Market Opportunity Score", analysis?.market_score],
+    ["Business Model Score", analysis?.business_model_score],
+    ["Industry Attractiveness Score", analysis?.industry_score],
+    ["Fundraising Readiness Score", analysis?.fundraising_score],
+  ];
+
+  return (
+    <AnalysisSection title="Startup Analysis" icon={<Building2 size={20} />} loading={loading && !analysis}>
+      <ProfileGrid rows={profileRows} />
+      <ScoreGrid scores={scores} />
+      <InsightColumns
+        columns={[
+          ["Strengths", analysis?.strengths],
+          ["Risks", analysis?.risks],
+          ["Recommendations", analysis?.recommendations],
+        ]}
+      />
+    </AnalysisSection>
+  );
+}
+
+function PitchDeckAnalysisSection({ deckFile, analysis, loading, onDeckChange, onAnalyze }) {
+  const categoryLabels = {
+    problem: "Problem",
+    solution: "Solution",
+    market: "Market",
+    business_model: "Business Model",
+    traction: "Traction",
+    team: "Team",
+    financials: "Financials",
+    fundraising_readiness: "Fundraising Readiness",
+  };
+  const categoryScores = Object.entries(categoryLabels).map(([key, label]) => [label, analysis?.category_scores?.[key]]);
+
+  return (
+    <AnalysisSection title="Pitch Deck Analysis" icon={<FileText size={20} />} loading={loading && !analysis}>
+      <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <div>
+          <label className="flex min-h-56 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-blue-50/50 px-6 text-center hover:bg-blue-50">
+            <Upload className="text-blue-700" size={34} />
+            <span className="mt-3 text-base font-semibold text-slate-950">Upload Pitch Deck</span>
+            <span className="mt-1 text-sm text-slate-500">PDF or PPTX, maximum 10MB</span>
+            <input type="file" accept="application/pdf,.pdf,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={onDeckChange} className="hidden" />
+          </label>
+          {deckFile && <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">{deckFile.name}</p>}
+          <button type="button" onClick={onAnalyze} disabled={loading} className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70">
+            {loading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
+            Analyze
           </button>
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Pitch Deck Analysis</p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Upload your pitch deck</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Upload a PDF deck to validate the file and attach it to the current founder profile.
+          {!deckFile && (
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              No pitch deck uploaded. AI Insights can still analyze founder profile and startup information.
             </p>
-            <label className="mt-6 flex min-h-56 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-blue-50/50 px-6 text-center hover:bg-blue-50">
-              <Upload className="text-blue-700" size={34} />
-              <span className="mt-3 text-base font-semibold text-slate-950">Choose PDF pitch deck</span>
-              <span className="mt-1 text-sm text-slate-500">Maximum file size: 10MB</span>
-              <input type="file" accept="application/pdf,.pdf" onChange={onPitchDeckChange} className="hidden" />
-            </label>
-            {pitchDeckUploaded && (
-              <p className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-                Pitch deck uploaded and ready for matching context.
-              </p>
-            )}
-            {deckError && (
-              <p className="mt-4 rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
-                {deckError}
-              </p>
-            )}
-            {/* TODO: Connect this flow to a production pitch deck analysis endpoint for full expert-level analysis, slide breakdown, and AI chat. */}
-          </section>
-        </main>
+          )}
+        </div>
+
+        <div className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <ScoreSummaryCard label="Overall Score" value={analysis?.overall_score} />
+            <InfoSummaryCard label="Investment Readiness" value={analysis?.investment_readiness} />
+            <InfoSummaryCard label="Recommendation" value={analysis?.recommendation} />
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase text-slate-500">Executive Summary</p>
+            <p className="mt-2 text-sm leading-6 text-slate-700">{analysis?.executive_summary || "Run analysis to generate a pitch deck summary."}</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {categoryScores.map(([label, score]) => <ScoreBar key={label} label={label} score={score} />)}
+          </div>
+        </div>
+      </div>
+
+      <InsightColumns
+        columns={[
+          ["Key Strengths", analysis?.strengths],
+          ["Key Weaknesses", analysis?.weaknesses],
+          ["Investor Concerns", analysis?.investor_concerns],
+          ["Missing Information", analysis?.missing_information],
+          ["Improvement Recommendations", analysis?.improvement_recommendations],
+        ]}
+      />
+      <SlideAnalysisAccordion slides={analysis?.slide_analysis || []} />
+    </AnalysisSection>
+  );
+}
+
+function AnalysisSection({ title, icon, loading, children }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-blue-50 p-2 text-blue-700">{icon}</div>
+          <h2 className="text-xl font-semibold text-slate-950">{title}</h2>
+        </div>
+        {loading && <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"><Loader2 className="animate-spin" size={13} /> Analyzing</span>}
+      </div>
+      <div className="space-y-5">{children}</div>
+    </section>
+  );
+}
+
+function ProfileGrid({ rows }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {rows.map(([label, value]) => (
+        <div key={label} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+          <p className="mt-1 break-words text-sm font-semibold text-slate-900">{value || "Not provided"}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ScoreGrid({ scores }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {scores.map(([label, score]) => (
+        <div key={label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm font-semibold text-slate-700">{label}</p>
+            <span className="text-2xl font-semibold text-blue-700">{hasValue(score) ? score : "-"}</span>
+          </div>
+          <ScoreBar label={scoreLabel(score)} score={score} compact />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ScoreSummaryCard({ label, value }) {
+  return (
+    <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+      <p className="text-xs font-semibold uppercase text-blue-700">{label}</p>
+      <p className="mt-2 text-3xl font-semibold text-blue-800">{hasValue(value) ? value : "-"}</p>
+      <p className="mt-1 text-xs font-semibold text-blue-700">{scoreLabel(value)}</p>
+    </div>
+  );
+}
+
+function InfoSummaryCard({ label, value }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-slate-950">{value || "Pending"}</p>
+    </div>
+  );
+}
+
+function ScoreBar({ label, score, compact = false }) {
+  const value = Math.max(0, Math.min(100, Number(score || 0)));
+  return (
+    <div className={compact ? "mt-3" : "rounded-lg border border-slate-100 bg-slate-50 p-3"}>
+      <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+        <span className="font-semibold text-slate-700">{label}</span>
+        <span className="font-semibold text-blue-700">{hasValue(score) ? `${Math.round(value)}%` : "Pending"}</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+        <div className="h-full rounded-full bg-blue-600 transition-all duration-500" style={{ width: `${hasValue(score) ? value : 0}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function InsightColumns({ columns }) {
+  return (
+    <div className="grid gap-3 lg:grid-cols-3">
+      {columns.map(([title, items]) => (
+        <div key={title} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-950">{title}</p>
+          {items?.length ? (
+            <ul className="mt-3 space-y-2">
+              {items.map((item) => (
+                <li key={item} className="flex gap-2 text-sm leading-5 text-slate-600">
+                  <CheckCircle2 className="mt-0.5 shrink-0 text-blue-600" size={15} />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-slate-500">Run analysis to generate this section.</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SlideAnalysisAccordion({ slides }) {
+  if (!slides.length) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm text-slate-500">
+        Slide-by-slide analysis will appear after a pitch deck is uploaded and analyzed.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white">
+      <div className="border-b border-slate-200 px-4 py-3">
+        <p className="font-semibold text-slate-950">Slide-by-Slide Analysis</p>
+      </div>
+      <div className="divide-y divide-slate-200">
+        {slides.map((slide) => (
+          <details key={`${slide.slide_number}-${slide.title}`} className="group">
+            <summary className="flex cursor-pointer items-center justify-between gap-3 px-4 py-4 text-left">
+              <div>
+                <p className="font-semibold text-slate-950">Slide {slide.slide_number}: {slide.title || "Untitled"}</p>
+                <p className="mt-1 text-sm text-blue-700">Score: {slide.score}</p>
+              </div>
+              <ChevronDown className="text-slate-400 transition group-open:rotate-180" size={18} />
+            </summary>
+            <div className="grid gap-3 px-4 pb-4 lg:grid-cols-3">
+              <MiniList title="Strengths" items={slide.strengths} />
+              <MiniList title="Issues" items={slide.issues} />
+              <MiniList title="Recommendations" items={slide.recommendations} />
+            </div>
+          </details>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MiniList({ title, items = [] }) {
+  return (
+    <div className="rounded-lg bg-slate-50 p-3">
+      <p className="text-xs font-semibold uppercase text-slate-500">{title}</p>
+      {items.length ? (
+        <ul className="mt-2 space-y-1 text-sm leading-5 text-slate-600">
+          {items.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm text-slate-500">None provided.</p>
       )}
     </div>
   );
@@ -2711,14 +3052,14 @@ function AIInsightBanner() {
           <Sparkles size={18} />
         </div>
         <div>
-          <p className="text-sm font-semibold text-blue-700">AI Insight</p>
+          <p className="text-sm font-semibold text-blue-700">AI Insights</p>
           <p className="mt-1 text-lg font-semibold text-slate-950">
             Your strongest advantage is Toronto-based fintech network overlap.
           </p>
         </div>
       </div>
       <button type="button" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-blue-700 ring-1 ring-blue-100 hover:bg-blue-100">
-        View Full Insight <ArrowRight size={15} />
+        View Full Insights <ArrowRight size={15} />
       </button>
     </section>
   );
@@ -2773,6 +3114,12 @@ function DashboardDrawer({
   onCopyEmail,
   onSendEmail,
   onSendLinkedIn,
+  aiInsightsDeckFile,
+  aiInsightsLoading,
+  aiInsightsError,
+  aiInsightsResult,
+  onAiInsightsDeckChange,
+  onAnalyzeAiInsights,
   connectionDataFile,
   pitchDeckUploaded,
   relationshipLoading,
@@ -2781,6 +3128,7 @@ function DashboardDrawer({
   onPitchDeckChange,
   onOpenOutreach,
   allInvestors,
+  onFindInvestors,
   chatMessages,
   chatInput,
   setChatInput,
@@ -2788,7 +3136,7 @@ function DashboardDrawer({
   handleClientFile,
   onClose,
 }) {
-  const fullScreenPanelIds = new Set(["relationship", "outreach", "pitch"]);
+  const fullScreenPanelIds = new Set(["relationship", "outreach", "ai-insight"]);
   const isFullScreenPanel = fullScreenPanelIds.has(activePanel.id);
 
   return (
@@ -2808,12 +3156,6 @@ function DashboardDrawer({
           <ProfileTable formData={formData} />
         ) : activePanel.id === "matching" ? (
           <MatchesPanel matches={matches} matchingLoading={matchingLoading} matchingSource={matchingSource} />
-        ) : activePanel.id === "pitch" ? (
-          <PitchCoachPanel
-            pitchDeckUploaded={pitchDeckUploaded}
-            deckError={deckError}
-            onPitchDeckChange={onPitchDeckChange}
-          />
         ) : activePanel.id === "investor" ? (
           <InvestorDetailPanel investor={activePanel.investor} generatedEmail={generatedEmail} />
         ) : activePanel.id === "relationship" ? (
@@ -2852,6 +3194,17 @@ function DashboardDrawer({
             onSendEmail={onSendEmail}
             onSendLinkedIn={onSendLinkedIn}
           />
+        ) : activePanel.id === "ai-insight" ? (
+          <AIInsightsPanel
+            formData={formData}
+            deckFile={aiInsightsDeckFile}
+            loading={aiInsightsLoading}
+            error={aiInsightsError}
+            result={aiInsightsResult}
+            onDeckChange={onAiInsightsDeckChange}
+            onAnalyze={onAnalyzeAiInsights}
+            onFindInvestors={onFindInvestors}
+          />
         ) : (
           <ChatWorkspace
             chatMessages={chatMessages}
@@ -2884,6 +3237,7 @@ function ProfileTable({ formData }) {
             ["Education", formData.education || "-"],
             ["Startup Name", formData.startupName || "-"],
             ["Website URL", formData.websiteUrl || "-"],
+            ["Startup Description", formData.oneSentenceDescription || "-"],
             ["Stage", formData.stage || "-"],
             ["Industry", formData.industry.join(", ") || "-"],
             ["Business Model", formData.businessModel.join(", ") || "-"],
