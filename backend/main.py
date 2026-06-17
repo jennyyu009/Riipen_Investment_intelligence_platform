@@ -19,7 +19,7 @@ try:
     from .matching_score.api import router as matching_score_router
     from .relationship_intelligence.api import router as relationship_intelligence_router
     from .seed_investors import ensure_investors_seeded
-    from .services.ai_insights_service import MODEL_ID as AI_INSIGHTS_MODEL_ID, analyze_pitch_deck, extract_text_with_docling
+    from .services.ai_insights_service import AIInsightsError, MODEL_ID as AI_INSIGHTS_MODEL_ID, analyze_pitch_deck, extract_text_with_docling
 except ImportError:
     from database import Base, SessionLocal, engine, ensure_database_schema, get_db
     from config import ENABLE_HEAVY_PROCESSING, MAX_PITCH_DECK_BYTES
@@ -30,7 +30,7 @@ except ImportError:
     from matching_score.api import router as matching_score_router
     from relationship_intelligence.api import router as relationship_intelligence_router
     from seed_investors import ensure_investors_seeded
-    from services.ai_insights_service import MODEL_ID as AI_INSIGHTS_MODEL_ID, analyze_pitch_deck, extract_text_with_docling
+    from services.ai_insights_service import AIInsightsError, MODEL_ID as AI_INSIGHTS_MODEL_ID, analyze_pitch_deck, extract_text_with_docling
 
 Base.metadata.create_all(bind=engine)
 ensure_database_schema()
@@ -232,7 +232,15 @@ async def analyze_ai_insights(request: Request):
             str(exc),
             traceback.format_exc(),
         )
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "AI Insights temporarily unavailable.",
+                "request_id": request_id,
+                "stage": "request_extraction",
+                "exception": str(exc),
+            },
+        )
     except Exception as exc:
         logger.error(
             "[AI Insights] request_id=%s request parsing/extraction failed exception=%s traceback=%s",
@@ -240,17 +248,51 @@ async def analyze_ai_insights(request: Request):
             repr(exc),
             traceback.format_exc(),
         )
-        raise HTTPException(status_code=400, detail="Pitch deck text or file is required.")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Pitch deck text or file is required.",
+                "request_id": request_id,
+                "stage": "request_parsing",
+                "exception": repr(exc),
+            },
+        )
 
     if not pitch_text.strip():
         logger.warning("[AI Insights] request_id=%s empty_pitch_text_after_extraction", request_id)
-        raise HTTPException(status_code=400, detail="Pitch deck text is required.")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Pitch deck text is required.",
+                "request_id": request_id,
+                "stage": "empty_pitch_text",
+            },
+        )
 
     try:
         logger.info("[AI Insights] request_id=%s starting_model_analysis pitch_text_chars=%s", request_id, len(pitch_text or ""))
         analysis = await analyze_pitch_deck(pitch_text)
         logger.info("[AI Insights] request_id=%s analysis_success top_level_keys=%s", request_id, list(analysis.keys()))
         return {"success": True, "analysis": analysis}
+    except AIInsightsError as exc:
+        logger.error(
+            "[AI Insights] request_id=%s analysis_failed model=%s stage=%s exception=%s traceback=%s",
+            request_id,
+            AI_INSIGHTS_MODEL_ID,
+            exc.stage,
+            repr(exc),
+            traceback.format_exc(),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "AI Insights temporarily unavailable.",
+                "request_id": request_id,
+                "stage": exc.stage,
+                "model": AI_INSIGHTS_MODEL_ID,
+                "exception": str(exc),
+            },
+        )
     except Exception as exc:
         logger.error(
             "[AI Insights] request_id=%s analysis_failed model=%s exception=%s traceback=%s",
@@ -259,7 +301,16 @@ async def analyze_ai_insights(request: Request):
             repr(exc),
             traceback.format_exc(),
         )
-        raise HTTPException(status_code=502, detail="AI Insights temporarily unavailable.")
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "AI Insights temporarily unavailable.",
+                "request_id": request_id,
+                "stage": "unknown_analysis_error",
+                "model": AI_INSIGHTS_MODEL_ID,
+                "exception": repr(exc),
+            },
+        )
 
 
 @app.get("/matches/{startup_id}")

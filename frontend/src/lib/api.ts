@@ -17,15 +17,27 @@ export async function apiFetch(path: string, options?: RequestInit) {
     console.error(`[API] ${response.status} ${url}`);
     const text = await response.text();
     let message = `API request failed: ${response.status}`;
+    let detail: unknown = null;
     if (text) {
       try {
         const data = JSON.parse(text);
-        message = data.detail || data.message || message;
+        detail = data.detail ?? data.message ?? null;
+        if (typeof detail === "string") {
+          message = detail;
+        } else if (detail && typeof detail === "object" && "message" in detail) {
+          message = String((detail as { message?: unknown }).message || message);
+        } else {
+          message = data.message || message;
+        }
       } catch {
         message = text;
       }
     }
-    throw new Error(message);
+    const error = new Error(message) as Error & { status?: number; detail?: unknown; responseText?: string };
+    error.status = response.status;
+    error.detail = detail;
+    error.responseText = text;
+    throw error;
   }
 
   const text = await response.text();

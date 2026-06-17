@@ -24,6 +24,12 @@ Respond professionally and concisely.
 Return valid JSON only."""
 
 
+class AIInsightsError(RuntimeError):
+    def __init__(self, stage: str, message: str):
+        super().__init__(message)
+        self.stage = stage
+
+
 def truncate_for_log(value: Any, limit: int = 4000) -> str:
     text = str(value or "")
     return text if len(text) <= limit else f"{text[:limit]}... [truncated {len(text) - limit} chars]"
@@ -103,7 +109,7 @@ def extract_text_with_docling(file_bytes: bytes, filename: str) -> str:
         from docling.document_converter import DocumentConverter
     except ImportError as exc:
         logger.exception("[AI Insights] Docling import failed. Is docling installed in the Render environment?")
-        raise RuntimeError("Docling is required for pitch deck text extraction.") from exc
+        raise AIInsightsError("docling_import", "Docling is required for pitch deck text extraction.") from exc
 
     suffix = Path(filename or "pitch-deck.pdf").suffix or ".pdf"
     try:
@@ -124,7 +130,7 @@ def extract_text_with_docling(file_bytes: bytes, filename: str) -> str:
         return text
     except Exception:
         logger.error("[AI Insights] Docling extraction failed traceback=%s", traceback.format_exc())
-        raise
+        raise AIInsightsError("docling_extraction", "Docling failed to extract pitch deck text.")
 
 
 def build_prompt(pitch_text: str) -> str:
@@ -214,7 +220,7 @@ def parse_json_response(raw_text: str) -> Dict[str, Any]:
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if not match:
             logger.error("[AI Insights] No JSON object found in model response. response=%s", truncate_for_log(text, 6000))
-            raise
+            raise AIInsightsError("json_parse", "The model response did not contain a JSON object.") from exc
         try:
             parsed = json.loads(match.group(0))
             logger.info("[AI Insights] JSON parsed successfully after extracting object keys=%s", list(parsed.keys()))
@@ -225,34 +231,30 @@ def parse_json_response(raw_text: str) -> Dict[str, Any]:
                 traceback.format_exc(),
                 truncate_for_log(text, 6000),
             )
-            raise
+            raise AIInsightsError("json_parse", "The model response contained invalid JSON.")
 
 
-async def analyze_pitch_deck(pitch_text: str) -> Dict[str, Any]:
-    logger.info("[AI Insights] analyze_pitch_deck started model=%s input_chars=%s", MODEL_ID, len(pitch_text or ""))
-    cleaned_text = clean_pitch_text(pitch_text)
-    logger.info("[AI Insights] Cleaned pitch text chars=%s preview=%s", len(cleaned_text or ""), truncate_for_log(cleaned_text, 1200))
-    if not cleaned_text:
-        raise ValueError("Pitch deck text is required.")
+def extract_hf_exception_details(exc: Exception) -> Dict[str, Any]:
+    response_obj = getattr(exc, "response", None)
+    status_code = getattr(response_obj, "status_code", None)
+    response_text = getattr(response_obj, "text", "") if response_obj is not None else ""
+    return {
+        "status_code": status_code,
+        "response_text": response_text,
+        "exception": repr(exc),
+    }
 
-    api_key = os.getenv("HF_API_KEY")
-    logger.info("[AI Insights] HF_API_KEY loaded=%s length=%s", bool(api_key), len(api_key or ""))
-    if not api_key:
-        raise RuntimeError("HF_API_KEY is not configured.")
 
+def call_hugging_face(prompt: str, api_key: str) -> str:
     from huggingface_hub import InferenceClient
 
-    prompt = build_prompt(cleaned_text)
-    logger.info(
-        "[AI Insights] Hugging Face request starting provider=hf-inference model=%s max_tokens=2200 temperature=0.2 prompt_chars=%s",
-        MODEL_ID,
-        len(prompt),
-    )
     client = InferenceClient(
         provider="hf-inference",
         api_key=api_key,
     )
+
     try:
+        logger.info("[AI Insights] Trying Hugging Face chat.completions path model=%s", MODEL_ID)
         response = client.chat.completions.create(
             model=MODEL_ID,
             messages=[
@@ -262,30 +264,69 @@ async def analyze_pitch_deck(pitch_text: str) -> Dict[str, Any]:
             temperature=0.2,
             max_tokens=2200,
         )
-        logger.info("[AI Insights] Hugging Face response object=%s", truncate_for_log(response, 4000))
-    except Exception as exc:
-        response_obj = getattr(exc, "response", None)
-        status_code = getattr(response_obj, "status_code", None)
-        response_text = getattr(response_obj, "text", "") if response_obj is not None else ""
+        logger.info("[AI Insights] Hugging Face chat response object=%s", truncate_for_log(response, 4000))
+        content = response.choices[0].message.content
+        logger.info("[AI Insights] Hugging Face chat raw content=%s", truncate_for_log(content, 6000))
+        return content
+    except Exception as chat_exc:
+        details = extract_hf_exception_details(chat_exc)
         logger.error(
-            "[AI Insights] Hugging Face request failed model=%s status_code=%s exception=%s response_content=%s traceback=%s",
+            "[AI Insights] Hugging Face chat path failed model=%s status_code=%s exception=%s response_content=%s traceback=%s",
             MODEL_ID,
-            status_code,
-            repr(exc),
-            truncate_for_log(response_text, 6000),
+            details["status_code"],
+            details["exception"],
+            truncate_for_log(details["response_text"], 6000),
             traceback.format_exc(),
         )
-        raise
 
     try:
-        content = response.choices[0].message.content
-        logger.info("[AI Insights] Hugging Face response status_code=%s model=%s", "not_exposed_by_InferenceClient", MODEL_ID)
-        logger.info("[AI Insights] Hugging Face raw content=%s", truncate_for_log(content, 6000))
-        return parse_json_response(content)
-    except Exception:
-        logger.error(
-            "[AI Insights] Response extraction or JSON parsing failed traceback=%s response_object=%s",
-            traceback.format_exc(),
-            truncate_for_log(response, 6000),
+        logger.info("[AI Insights] Trying Hugging Face text_generation fallback model=%s", MODEL_ID)
+        fallback_prompt = f"{SYSTEM_MESSAGE}\n\n{prompt}\n\nReturn valid JSON only."
+        content = client.text_generation(
+            fallback_prompt,
+            model=MODEL_ID,
+            max_new_tokens=2200,
+            temperature=0.2,
+            return_full_text=False,
         )
+        logger.info("[AI Insights] Hugging Face text_generation raw content=%s", truncate_for_log(content, 6000))
+        return content
+    except Exception as text_exc:
+        details = extract_hf_exception_details(text_exc)
+        logger.error(
+            "[AI Insights] Hugging Face text_generation fallback failed model=%s status_code=%s exception=%s response_content=%s traceback=%s",
+            MODEL_ID,
+            details["status_code"],
+            details["exception"],
+            truncate_for_log(details["response_text"], 6000),
+            traceback.format_exc(),
+        )
+        raise AIInsightsError("huggingface_request", "Hugging Face inference request failed.") from text_exc
+
+
+async def analyze_pitch_deck(pitch_text: str) -> Dict[str, Any]:
+    logger.info("[AI Insights] analyze_pitch_deck started model=%s input_chars=%s", MODEL_ID, len(pitch_text or ""))
+    cleaned_text = clean_pitch_text(pitch_text)
+    logger.info("[AI Insights] Cleaned pitch text chars=%s preview=%s", len(cleaned_text or ""), truncate_for_log(cleaned_text, 1200))
+    if not cleaned_text:
+        raise AIInsightsError("empty_pitch_text", "Pitch deck text is required.")
+
+    api_key = os.getenv("HF_API_KEY")
+    logger.info("[AI Insights] HF_API_KEY loaded=%s length=%s", bool(api_key), len(api_key or ""))
+    if not api_key:
+        raise AIInsightsError("environment", "HF_API_KEY is not configured.")
+
+    prompt = build_prompt(cleaned_text)
+    logger.info(
+        "[AI Insights] Hugging Face request starting provider=hf-inference model=%s max_tokens=2200 temperature=0.2 prompt_chars=%s",
+        MODEL_ID,
+        len(prompt),
+    )
+    content = call_hugging_face(prompt, api_key)
+    try:
+        return parse_json_response(content)
+    except AIInsightsError:
         raise
+    except Exception as exc:
+        logger.error("[AI Insights] Response extraction or JSON parsing failed traceback=%s", traceback.format_exc())
+        raise AIInsightsError("json_parse", "Failed to parse model response as JSON.") from exc

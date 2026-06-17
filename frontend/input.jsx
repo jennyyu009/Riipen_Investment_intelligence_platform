@@ -855,7 +855,11 @@ export default function FounderIntakeForm() {
     } catch (error) {
       console.error("[AI Insights] Analysis failed", error);
       setAiInsightsResult(null);
-      setAiInsightsError("AI Insights temporarily unavailable.");
+      const detail = error.detail && typeof error.detail === "object" ? error.detail : null;
+      const diagnostic = detail?.request_id
+        ? ` Request ID: ${detail.request_id}${detail.stage ? `, stage: ${detail.stage}` : ""}.`
+        : "";
+      setAiInsightsError(`${error.message || "AI Insights temporarily unavailable."}${diagnostic}`);
     } finally {
       setAiInsightsLoading(false);
     }
